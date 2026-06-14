@@ -1,6 +1,8 @@
 "use client";
 import { useEffect } from "react";
 import { io } from "socket.io-client";
+import Toolbar from "../components/Toolbar";
+import CanvasEditor from "../components/CanvasEditor";
 
 export default function Home() {
   useEffect(() => {
@@ -8,5 +10,9 @@ export default function Home() {
     socket.on("connect", () => console.log("connected:", socket.id));
     return () => { socket.disconnect(); };
   }, []);
-  return <main className="p-8">check the console</main>;
+  return <main className="flex flex-col p-8 bg-white text-black">
+    My Canvas App
+    <Toolbar />
+    <CanvasEditor />
+  </main>;
 }
