@@ -1,6 +1,5 @@
 import {Square, Triangle, Minus, Text, Circle, StickyNote, Eraser} from "lucide-react"
-
-type Tool = "select" | "square" | "circle" | "triangle" | "line" | "text" | "note" | "eraser";
+import type { Tool } from "@/types/shape";
 
 type ToolbarProps = {
   selectedTool: Tool;

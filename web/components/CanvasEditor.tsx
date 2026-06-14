@@ -1,4 +1,4 @@
-type Tool = "select" | "square" | "circle" | "triangle" | "line" | "text" | "note" | "eraser";
+import type { Tool } from "@/types/shape";
 
 type CanvasEditorProps = {
   selectedTool: Tool;
@@ -24,7 +24,7 @@ export default function CanvasEditor({ selectedTool }: CanvasEditorProps) {
     if (["square", "circle", "triangle", "line"].includes(selectedTool)) {
         return <div className="border mt-4 w-full min-h-[85dvh] flex items-center justify-center text-gray-500">{selectedTool.charAt(0).toUpperCase() + selectedTool.slice(1)} tool selected - functionality coming soon!</div>;
     }
-    
+
     return (
         <div className="border mt-4 w-full min-h-[85dvh]">
             
