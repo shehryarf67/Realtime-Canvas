@@ -46,6 +46,14 @@ export default function CanvasEditor({ selectedTool }: CanvasEditorProps) {
         };
     }
 
+    function deleteShape(id: string) {
+        setShapes((prev) => prev.filter((shape) => shape.id !== id));
+    }
+
+    function deleteNote(id: number) {
+        setNotes((prev) => prev.filter((note) => note.id !== id));
+    }
+
     function handlePointerDown(e: React.PointerEvent<HTMLDivElement>) {
         if (e.target !== e.currentTarget) return;
         if (selectedTool === "select" || selectedTool === "eraser" || selectedTool === "text") {
@@ -199,6 +207,11 @@ export default function CanvasEditor({ selectedTool }: CanvasEditorProps) {
 
     function handleLinePointerDown(e: React.PointerEvent<SVGLineElement>, shape: LineShape) {
         e.stopPropagation();
+        if (selectedTool === "eraser") {
+            deleteShape(shape.id);
+            return;
+        }
+
         lineDrag.current = {
             id: shape.id,
             pointerStart: getCanvasPoint(e.clientX, e.clientY),
@@ -213,6 +226,11 @@ export default function CanvasEditor({ selectedTool }: CanvasEditorProps) {
 
     function handleTrianglePointerDown(e: React.PointerEvent<SVGPolygonElement>, shape: TriangleShape) {
         e.stopPropagation();
+        if (selectedTool === "eraser") {
+            deleteShape(shape.id);
+            return;
+        }
+
         triangleDrag.current = {
             id: shape.id,
             pointerStart: getCanvasPoint(e.clientX, e.clientY),
@@ -286,15 +304,16 @@ export default function CanvasEditor({ selectedTool }: CanvasEditorProps) {
         );
     }
 
-    const updateNoteText = (id: number, text: string) => {
-        setNotes(notes.map((note) => (note.id === id ? { ...note, text } : note)));
-    };
-
     function renderNote(note: Note) {
         return (
             <textarea
                 value={note.text}
-                onPointerDown={(e) => e.stopPropagation()}
+                onPointerDown={(e) => {
+                    e.stopPropagation();
+                    if (selectedTool === "eraser") {
+                        deleteNote(note.id);
+                    }
+                }}
                 onChange={(e) => {
                     const value = e.target.value;
 
@@ -332,6 +351,12 @@ export default function CanvasEditor({ selectedTool }: CanvasEditorProps) {
                         size={{ width: shape.width, height: shape.height }}
                         position={{ x: shape.x, y: shape.y }}
                         bounds="parent"
+                        onPointerDown={(e: React.PointerEvent<HTMLElement>) => {
+                            if (selectedTool === "eraser") {
+                                e.stopPropagation();
+                                deleteShape(shape.id);
+                            }
+                        }}
                         onDragStop={(e, data) => {
                             setShapes((prev) =>
                                 prev.map((s) =>
@@ -365,6 +390,12 @@ export default function CanvasEditor({ selectedTool }: CanvasEditorProps) {
                     size={{ width: note.width, height: note.height }}
                     position={{ x: note.x, y: note.y }}
                     bounds="parent"
+                    onPointerDown={(e: React.PointerEvent<HTMLElement>) => {
+                        if (selectedTool === "eraser") {
+                            e.stopPropagation();
+                            deleteNote(note.id);
+                        }
+                    }}
                 >
                     {renderNote(note)}
                 </Rnd>
