@@ -2,7 +2,7 @@
 
 import type { Tool, Shape } from "@/types/shape";
 import { Rnd } from "react-rnd";
-import { useState } from "react";
+import { useState, useRef } from "react";
 
 type CanvasEditorProps = {
     selectedTool: Tool;
@@ -10,6 +10,50 @@ type CanvasEditorProps = {
 
 export default function CanvasEditor({ selectedTool }: CanvasEditorProps) {
     const [shapes, setShapes] = useState<Shape[]>([]);
+    const drawingId = useRef<string | null>(null);
+    const startPoint = useRef<{ x: number; y: number } | null>(null);
+
+    function handlePointerDown(e: React.PointerEvent<HTMLDivElement>) {
+        if (selectedTool === "select" || selectedTool === "eraser" || selectedTool === "text" || selectedTool === "note") {
+            return;
+        }
+        const rect = e.currentTarget.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        const id = crypto.randomUUID();
+
+        const newShape: Shape = {
+            id,
+            type: selectedTool,
+            x,
+            y,
+            width: 0,
+            height: 0,
+        };
+        setShapes((prev) => [...prev, newShape]);
+        drawingId.current = id;
+        startPoint.current = { x, y };
+    }
+
+    function handlePointerMove(e: React.PointerEvent<HTMLDivElement>) {
+        if (!drawingId.current || !startPoint.current) return;
+        const rect = e.currentTarget.getBoundingClientRect();
+        const currentX = e.clientX - rect.left;
+        const currentY = e.clientY - rect.top;
+        const start = startPoint.current;
+        setShapes((prev) =>
+            prev.map((s) =>
+                s.id === drawingId.current
+                    ? { ...s, width: currentX - start.x, height: currentY - start.y }
+                    : s
+            )
+        );
+    }
+
+    function handlePointerUp() {
+        drawingId.current = null;
+        startPoint.current = null;
+    }
 
     function handleCanvasClick(e: React.MouseEvent<HTMLDivElement>) {
         if (selectedTool === "select" || selectedTool === "eraser" || selectedTool === "text" || selectedTool === "note") {
@@ -52,19 +96,39 @@ export default function CanvasEditor({ selectedTool }: CanvasEditorProps) {
 
     return (
         <div
-            onClick={handleCanvasClick}
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp}
             className="relative mt-4 min-h-[85dvh] w-full border"
         >
             {shapes.map((shape) => (
                 <Rnd
                     key={shape.id}
-                    default={{
-                        x: shape.x,
-                        y: shape.y,
-                        width: shape.width,
-                        height: shape.height,
-                    }}
+                    size={{ width: shape.width, height: shape.height }}
+                    position={{ x: shape.x, y: shape.y }}
                     bounds="parent"
+                    onDragStop={(e, data) => {
+                        setShapes((prev) =>
+                            prev.map((s) =>
+                                s.id === shape.id ? { ...s, x: data.x, y: data.y } : s
+                            )
+                        );
+                    }}
+                    onResizeStop={(e, direction, ref, delta, position) => {
+                        setShapes((prev) =>
+                            prev.map((s) =>
+                                s.id === shape.id
+                                    ? {
+                                        ...s,
+                                        width: parseInt(ref.style.width),
+                                        height: parseInt(ref.style.height),
+                                        x: position.x,
+                                        y: position.y,
+                                    }
+                                    : s
+                            )
+                        );
+                    }}
                 >
                     {renderShape(shape)}
                 </Rnd>
