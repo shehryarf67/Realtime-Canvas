@@ -8,11 +8,35 @@ export type Tool =
   | "note"
   | "eraser";
 
-export type Shape = {
+type BoxShapeBase = {
   id: string;
-  type: "square" | "circle" | "triangle" | "line";
   x: number;
   y: number;
   width: number;
   height: number;
 };
+
+export type SquareShape = BoxShapeBase & {
+  type: "square";
+};
+
+export type CircleShape = BoxShapeBase & {
+  type: "circle";
+};
+
+export type TriangleShape = BoxShapeBase & {
+  type: "triangle";
+};
+
+export type BoxShape = SquareShape | CircleShape | TriangleShape;
+
+export type LineShape = {
+  id: string;
+  type: "line";
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+};
+
+export type Shape = BoxShape | LineShape;
