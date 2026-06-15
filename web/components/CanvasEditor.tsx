@@ -44,7 +44,13 @@ export default function CanvasEditor({ selectedTool }: CanvasEditorProps) {
         setShapes((prev) =>
             prev.map((s) =>
                 s.id === drawingId.current
-                    ? { ...s, width: currentX - start.x, height: currentY - start.y }
+                    ? {
+                        ...s,
+                        x: Math.min(start.x, currentX),
+                        y: Math.min(start.y, currentY),
+                        width: Math.abs(currentX - start.x),
+                        height: Math.abs(currentY - start.y),
+                    }
                     : s
             )
         );
@@ -53,23 +59,6 @@ export default function CanvasEditor({ selectedTool }: CanvasEditorProps) {
     function handlePointerUp() {
         drawingId.current = null;
         startPoint.current = null;
-    }
-
-    function handleCanvasClick(e: React.MouseEvent<HTMLDivElement>) {
-        if (selectedTool === "select" || selectedTool === "eraser" || selectedTool === "text" || selectedTool === "note") {
-            return;
-        }
-        const rect = e.currentTarget.getBoundingClientRect();
-
-        const newShape: Shape = {
-            id: crypto.randomUUID(),
-            type: selectedTool,
-            x: e.clientX - rect.left,
-            y: e.clientY - rect.top,
-            width: 100,
-            height: 100,
-        }
-        setShapes([...shapes, newShape]);
     }
 
 
