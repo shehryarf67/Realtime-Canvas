@@ -1,4 +1,4 @@
-import {Square, Triangle, Minus, Text, Circle, StickyNote, Eraser} from "lucide-react"
+import {Square, Triangle, Minus, Type, Circle, StickyNote, Eraser} from "lucide-react"
 import type { Tool } from "@/types/shape";
 
 type ToolbarProps = {
@@ -38,7 +38,7 @@ export default function Toolbar({ selectedTool, onSelectTool }: ToolbarProps) {
                 className={`p-2 bg-gray-200 hover:bg-gray-300 text-black rounded border ${selectedTool === "text" ? "ring-2 ring-blue-500 text-white" : "border-transparent"}`}
                 onClick={() => onSelectTool("text")}
             >
-                <Text size={18} />
+                <Type size={18} />
             </button>
             <button 
                 className={`p-2 bg-gray-200 hover:bg-gray-300 text-black rounded border ${selectedTool === "note" ? "ring-2 ring-blue-500 text-white" : "border-transparent"}`}

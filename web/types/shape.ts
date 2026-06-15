@@ -40,3 +40,13 @@ export type LineShape = {
 };
 
 export type Shape = BoxShape | LineShape;
+
+export interface Note {
+  id: number,
+  text: string, 
+  color: string,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+}

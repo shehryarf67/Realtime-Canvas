@@ -1,6 +1,6 @@
 "use client";
 
-import type { Tool, Shape, BoxShape, LineShape } from "@/types/shape";
+import type { Tool, Shape, BoxShape, LineShape, Note } from "@/types/shape";
 import { Rnd } from "react-rnd";
 import { useState, useRef } from "react";
 
@@ -18,6 +18,7 @@ export default function CanvasEditor({ selectedTool }: CanvasEditorProps) {
         pointerStart: { x: number; y: number };
         lineStart: Pick<LineShape, "x1" | "y1" | "x2" | "y2">;
     } | null>(null);
+    const [notes, setNotes] = useState<Note[]>([]);
 
     function clamp(value: number, min: number, max: number) {
         return Math.max(min, Math.min(value, max));
@@ -38,7 +39,21 @@ export default function CanvasEditor({ selectedTool }: CanvasEditorProps) {
 
     function handlePointerDown(e: React.PointerEvent<HTMLDivElement>) {
         if (e.target !== e.currentTarget) return;
-        if (selectedTool === "select" || selectedTool === "eraser" || selectedTool === "text" || selectedTool === "note") {
+        if (selectedTool === "select" || selectedTool === "eraser" || selectedTool === "text") {
+            return;
+        }
+        if (selectedTool === "note") {
+            const { x, y } = getCanvasPoint(e.clientX, e.clientY);
+            const newNote: Note = {
+                id: Date.now(),
+                text: "New note",
+                color: "#fff",
+                x,
+                y,
+                width: 200,
+                height: 200,
+            }
+            setNotes((prev) => [...prev, newNote]);
             return;
         }
         const { x, y } = getCanvasPoint(e.clientX, e.clientY);
@@ -168,6 +183,29 @@ export default function CanvasEditor({ selectedTool }: CanvasEditorProps) {
         );
     }
 
+    const updateNoteText = (id: number, text: string) => {
+        setNotes(notes.map((note) => (note.id === id ? { ...note, text } : note)));
+    };
+
+    function renderNote(note: Note) {
+        return (
+            <textarea
+                value={note.text}
+                onPointerDown={(e) => e.stopPropagation()}
+                onChange={(e) => {
+                    const value = e.target.value;
+
+                    setNotes((prev) =>
+                        prev.map((n) =>
+                            n.id === note.id ? { ...n, text: value } : n
+                        )
+                    );
+                }}
+                className="h-full w-full resize-none bg-yellow-100 p-2 text-sm outline-none"
+            />
+        )
+    }
+
     return (
         <div
             ref={canvasRef}
@@ -215,6 +253,16 @@ export default function CanvasEditor({ selectedTool }: CanvasEditorProps) {
                     </Rnd>
                 );
             })}
+            {notes.map((note) => (
+                <Rnd
+                    key={note.id}
+                    size={{ width: note.width, height: note.height }}
+                    position={{ x: note.x, y: note.y }}
+                    bounds="parent"
+                >
+                    {renderNote(note)}
+                </Rnd>
+            ))}
         </div>
     )
 }
