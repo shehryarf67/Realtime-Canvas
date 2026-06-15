@@ -24,11 +24,20 @@ export type CircleShape = BoxShapeBase & {
   type: "circle";
 };
 
-export type TriangleShape = BoxShapeBase & {
-  type: "triangle";
+export type BoxShape = SquareShape | CircleShape;
+
+export type Point = {
+  x: number;
+  y: number;
 };
 
-export type BoxShape = SquareShape | CircleShape | TriangleShape;
+export type TriangleShape = {
+  id: string;
+  type: "triangle";
+  p1: Point;
+  p2: Point;
+  p3: Point;
+};
 
 export type LineShape = {
   id: string;
@@ -39,7 +48,7 @@ export type LineShape = {
   y2: number;
 };
 
-export type Shape = BoxShape | LineShape;
+export type Shape = BoxShape | TriangleShape | LineShape;
 
 export interface Note {
   id: number,

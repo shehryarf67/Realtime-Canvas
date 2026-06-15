@@ -1,6 +1,6 @@
 "use client";
 
-import type { Tool, Shape, BoxShape, LineShape, Note } from "@/types/shape";
+import type { Tool, Shape, BoxShape, LineShape, TriangleShape, Point, Note } from "@/types/shape";
 import { Rnd } from "react-rnd";
 import { useState, useRef } from "react";
 
@@ -17,6 +17,15 @@ export default function CanvasEditor({ selectedTool }: CanvasEditorProps) {
         id: string;
         pointerStart: { x: number; y: number };
         lineStart: Pick<LineShape, "x1" | "y1" | "x2" | "y2">;
+    } | null>(null);
+    const triangleDrag = useRef<{
+        id: string;
+        pointerStart: Point;
+        triangleStart: Pick<TriangleShape, "p1" | "p2" | "p3">;
+    } | null>(null);
+    const triangleVertexDrag = useRef<{
+        id: string;
+        vertex: "p1" | "p2" | "p3";
     } | null>(null);
     const [notes, setNotes] = useState<Note[]>([]);
 
@@ -61,6 +70,8 @@ export default function CanvasEditor({ selectedTool }: CanvasEditorProps) {
 
         const newShape: Shape = selectedTool === "line"
             ? { id, type: "line", x1: x, y1: y, x2: x, y2: y }
+            : selectedTool === "triangle"
+                ? { id, type: "triangle", p1: { x, y }, p2: { x, y }, p3: { x, y } }
             : { id, type: selectedTool, x, y, width: 0, height: 0 };
 
         setShapes((prev) => [...prev, newShape]);
@@ -69,6 +80,49 @@ export default function CanvasEditor({ selectedTool }: CanvasEditorProps) {
     }
 
     function handlePointerMove(e: React.PointerEvent<HTMLDivElement>) {
+        if (triangleVertexDrag.current) {
+            const current = getCanvasPoint(e.clientX, e.clientY);
+            const { id, vertex } = triangleVertexDrag.current;
+
+            setShapes((prev) =>
+                prev.map((s) =>
+                    s.id === id && s.type === "triangle"
+                        ? { ...s, [vertex]: current }
+                        : s
+                )
+            );
+            return;
+        }
+
+        if (triangleDrag.current) {
+            const rect = canvasRef.current?.getBoundingClientRect();
+            if (!rect) return;
+
+            const current = getCanvasPoint(e.clientX, e.clientY);
+            const { id, pointerStart, triangleStart } = triangleDrag.current;
+            const points = [triangleStart.p1, triangleStart.p2, triangleStart.p3];
+            const minX = Math.min(...points.map((point) => point.x));
+            const maxX = Math.max(...points.map((point) => point.x));
+            const minY = Math.min(...points.map((point) => point.y));
+            const maxY = Math.max(...points.map((point) => point.y));
+            const dx = clamp(current.x - pointerStart.x, -minX, rect.width - maxX);
+            const dy = clamp(current.y - pointerStart.y, -minY, rect.height - maxY);
+
+            setShapes((prev) =>
+                prev.map((s) =>
+                    s.id === id && s.type === "triangle"
+                        ? {
+                            ...s,
+                            p1: { x: triangleStart.p1.x + dx, y: triangleStart.p1.y + dy },
+                            p2: { x: triangleStart.p2.x + dx, y: triangleStart.p2.y + dy },
+                            p3: { x: triangleStart.p3.x + dx, y: triangleStart.p3.y + dy },
+                        }
+                        : s
+                )
+            );
+            return;
+        }
+
         if (lineDrag.current) {
             const rect = canvasRef.current?.getBoundingClientRect();
             if (!rect) return;
@@ -109,6 +163,20 @@ export default function CanvasEditor({ selectedTool }: CanvasEditorProps) {
                     return { ...s, x2: currentX, y2: currentY };
                 }
 
+                if (s.type === "triangle") {
+                    const left = Math.min(start.x, currentX);
+                    const right = Math.max(start.x, currentX);
+                    const top = Math.min(start.y, currentY);
+                    const bottom = Math.max(start.y, currentY);
+
+                    return {
+                        ...s,
+                        p1: { x: left + (right - left) / 2, y: top },
+                        p2: { x: left, y: bottom },
+                        p3: { x: right, y: bottom },
+                    };
+                }
+
                 return {
                     ...s,
                     x: Math.min(start.x, currentX),
@@ -124,6 +192,8 @@ export default function CanvasEditor({ selectedTool }: CanvasEditorProps) {
         drawingId.current = null;
         startPoint.current = null;
         lineDrag.current = null;
+        triangleDrag.current = null;
+        triangleVertexDrag.current = null;
     }
 
 
@@ -141,27 +211,60 @@ export default function CanvasEditor({ selectedTool }: CanvasEditorProps) {
         };
     }
 
+    function handleTrianglePointerDown(e: React.PointerEvent<SVGPolygonElement>, shape: TriangleShape) {
+        e.stopPropagation();
+        triangleDrag.current = {
+            id: shape.id,
+            pointerStart: getCanvasPoint(e.clientX, e.clientY),
+            triangleStart: {
+                p1: shape.p1,
+                p2: shape.p2,
+                p3: shape.p3,
+            },
+        };
+    }
+
+    function handleTriangleVertexPointerDown(
+        e: React.PointerEvent<SVGCircleElement>,
+        shape: TriangleShape,
+        vertex: "p1" | "p2" | "p3"
+    ) {
+        e.stopPropagation();
+        triangleVertexDrag.current = {
+            id: shape.id,
+            vertex,
+        };
+    }
+
     function renderBoxShape(shape: BoxShape) {
         switch (shape.type) {
             case "square":
                 return <div className="h-full w-full border-2 border-black" />;
             case "circle":
                 return <div className="h-full w-full rounded-full border-2 border-black" />;
-            case "triangle":
-                return <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="h-full w-full">
-                    <polygon
-                        points="50,2 2,98 98,98"
-                        fill="transparent"
-                        stroke="black"
-                        strokeWidth="2"
-                        vectorEffect="non-scaling-stroke"
-                    />
-                </svg>;
             default: {
                 const _exhaustive: never = shape;
                 return _exhaustive;
             }
         }
+    }
+
+    function renderTriangleShape(shape: TriangleShape) {
+        const points = `${shape.p1.x},${shape.p1.y} ${shape.p2.x},${shape.p2.y} ${shape.p3.x},${shape.p3.y}`;
+
+        return (
+            <svg key={shape.id} className="pointer-events-none absolute inset-0 h-full w-full overflow-visible">
+                <polygon
+                    points={points}
+                    fill="transparent"
+                    stroke="black"
+                    strokeWidth="2"
+                    vectorEffect="non-scaling-stroke"
+                    className="pointer-events-auto cursor-move"
+                    onPointerDown={(e) => handleTrianglePointerDown(e, shape)}
+                />
+            </svg>
+        );
     }
 
     function renderLineShape(shape: LineShape) {
@@ -218,6 +321,9 @@ export default function CanvasEditor({ selectedTool }: CanvasEditorProps) {
             {shapes.map((shape) => {
                 if (shape.type === "line") {
                     return renderLineShape(shape);
+                }
+                if (shape.type === "triangle") {
+                    return renderTriangleShape(shape);
                 }
 
                 return (
