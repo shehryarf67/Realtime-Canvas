@@ -33,6 +33,19 @@ export default function CanvasEditor({ selectedTool }: CanvasEditorProps) {
         if (shape.type === "circle") {
             return <div className="h-full w-full rounded-full border-2 border-black" />;
         }
+        if (shape.type === "triangle") {
+            return <svg viewBox="0 0 100 100" className="h-full w-full">
+                <polygon
+                    points="50,5 5,95 95,95"
+                    fill="transparent"
+                    stroke="black"
+                    strokeWidth="2"
+                />
+            </svg>;
+        }
+        if (shape.type === "line") {
+            return <div className="h-px w-full border border-black"></div>
+        }
 
         return <div className="h-full w-full border-2 border-black" />;
     }
