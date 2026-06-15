@@ -13,13 +13,22 @@ export default function CanvasEditor({ selectedTool }: CanvasEditorProps) {
     const drawingId = useRef<string | null>(null);
     const startPoint = useRef<{ x: number; y: number } | null>(null);
 
+    function getCanvasPoint(e: React.PointerEvent<HTMLDivElement>) {
+        const rect = e.currentTarget.getBoundingClientRect();
+        const rawX = e.clientX - rect.left;
+        const rawY = e.clientY - rect.top;
+
+        return {
+            x: Math.max(0, Math.min(rawX, rect.width)),
+            y: Math.max(0, Math.min(rawY, rect.height)),
+        };
+    }
+
     function handlePointerDown(e: React.PointerEvent<HTMLDivElement>) {
         if (selectedTool === "select" || selectedTool === "eraser" || selectedTool === "text" || selectedTool === "note") {
             return;
         }
-        const rect = e.currentTarget.getBoundingClientRect();
-        const x = e.clientX - rect.left;
-        const y = e.clientY - rect.top;
+        const { x, y } = getCanvasPoint(e);
         const id = crypto.randomUUID();
 
         const newShape: Shape = {
@@ -37,9 +46,7 @@ export default function CanvasEditor({ selectedTool }: CanvasEditorProps) {
 
     function handlePointerMove(e: React.PointerEvent<HTMLDivElement>) {
         if (!drawingId.current || !startPoint.current) return;
-        const rect = e.currentTarget.getBoundingClientRect();
-        const currentX = e.clientX - rect.left;
-        const currentY = e.clientY - rect.top;
+        const { x: currentX, y: currentY } = getCanvasPoint(e);
         const start = startPoint.current;
         setShapes((prev) =>
             prev.map((s) =>
