@@ -482,7 +482,14 @@ export default function CanvasEditor({ selectedTool, selectedColour }: CanvasEdi
                         }
                     }}
                     onDragStart={() => setIsDraggingItem(true)}
-                    onDragStop={() => setIsDraggingItem(false)}
+                    onDragStop={(e, data) => {
+                        setIsDraggingItem(false);
+                        setNotes((prev) =>
+                            prev.map((n) =>
+                                n.id === note.id ? { ...n, x: data.x, y: data.y } : n
+                            )
+                        );
+                    }}
                 >
                     <div className="h-full w-full" style={getObjectCursorStyle()}>
                         {renderNote(note)}
