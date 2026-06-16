@@ -1,4 +1,4 @@
-import {Square, Triangle, Minus, Type, Circle, StickyNote, Eraser} from "lucide-react"
+import {MousePointer2, Square, Triangle, Minus, Type, Circle, StickyNote, Eraser} from "lucide-react"
 import type { Tool } from "@/types/shape";
 
 type ToolbarProps = {
@@ -10,6 +10,12 @@ export default function Toolbar({ selectedTool, onSelectTool }: ToolbarProps) {
 
     return (
         <div className="flex gap-2">
+            <button 
+                className={`p-2 bg-gray-200 hover:bg-gray-300 text-black rounded border ${selectedTool === "select" ? "ring-2 ring-blue-500 text-white" : "border-transparent"}`}
+                onClick={() => onSelectTool("select")}
+            >
+                <MousePointer2 size={18} />
+            </button>
             <button 
                 className={`p-2 bg-gray-200 hover:bg-gray-300 text-black rounded border ${selectedTool === "square" ? "ring-2 ring-blue-500 text-white" : "border-transparent"}`}
                 onClick={() => onSelectTool("square")}
