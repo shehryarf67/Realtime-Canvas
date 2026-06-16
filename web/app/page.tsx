@@ -17,25 +17,20 @@ export default function Home() {
     return () => { socket.disconnect(); };
   }, []);
 
-  useEffect(() => {
-    function handleDocumentPointerDown(e: PointerEvent) {
-      const target = e.target as Node;
-      const clickedToolbar = toolbarRef.current?.contains(target);
-      const clickedCanvas = canvasRef.current?.contains(target);
+  function handleRootPointerDownCapture(e: React.PointerEvent<HTMLElement>) {
+    const target = e.target as Node;
+    const clickedToolbar = toolbarRef.current?.contains(target);
+    const clickedCanvas = canvasRef.current?.contains(target);
 
-      if (!clickedToolbar && !clickedCanvas) {
-        setSelectedTool(null);
-      }
+    if (!clickedToolbar && !clickedCanvas) {
+      setSelectedTool(null);
     }
+  }
 
-    document.addEventListener("pointerdown", handleDocumentPointerDown, true);
-
-    return () => {
-      document.removeEventListener("pointerdown", handleDocumentPointerDown, true);
-    };
-  }, []);
-
-  return <main className="flex flex-col p-8 bg-white text-black">
+  return <main
+    className="flex flex-col p-8 bg-white text-black"
+    onPointerDownCapture={handleRootPointerDownCapture}
+  >
     My Canvas App
     <div ref={toolbarRef} className="w-fit self-start">
       <Toolbar selectedTool={selectedTool} onSelectTool={setSelectedTool} 
