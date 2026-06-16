@@ -1,13 +1,23 @@
 "use client";
 
-import type { Tool, Shape, BoxShape, LineShape, TriangleShape, Point, Note, TextBox } from "@/types/shape";
+import type { Tool, Shape, BoxShape, LineShape, TriangleShape, Point, Note, TextBox, CanvasMessage } from "@/types/shape";
 import { Rnd } from "react-rnd";
-import { useState, useRef } from "react";
+import { useSocket } from "@/contexts/SocketContext";
+import { useEffect, useRef, useState, useCallback } from "react";
+
+const ROOM_ID = "main";
 
 type CanvasEditorProps = {
     selectedTool: Tool | null;
     selectedColour: string;
 };
+
+function upsert<T extends { id: string | number }>(list: T[], item: T): T[] {
+    return list.some((el) => el.id === item.id)
+        ? list.map((el) => (el.id === item.id ? item : el))
+        : [...list, item];
+}
+
 
 const ERASER_CURSOR = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='5' fill='white' stroke='black' stroke-width='2'/%3E%3C/svg%3E") 8 8, auto`;
 
@@ -34,9 +44,62 @@ export default function CanvasEditor({ selectedTool, selectedColour }: CanvasEdi
         id: string;
         vertex: "p1" | "p2" | "p3";
     } | null>(null);
+    const shapesRef = useRef<Shape[]>([]);
     const [notes, setNotes] = useState<Note[]>([]);
     const [texts, setTexts] = useState<TextBox[]>([]);
     const [isDraggingItem, setIsDraggingItem] = useState(false);
+    const socket = useSocket();
+    const broadcast = useCallback(
+        (message: CanvasMessage) => {
+            socket?.emit("shape-message", { roomId: ROOM_ID, message });
+        },
+        [socket]
+    );
+
+    useEffect(() => {
+        if (!socket) return
+        const joinRoom = () => socket.emit("join-room", ROOM_ID);
+
+        if (socket.connected) joinRoom();
+        socket.on("connect", joinRoom);
+
+        return () => {
+            socket.off("connect", joinRoom)
+        };
+    }, [socket]);
+
+    useEffect(() => {
+        if (!socket) return
+
+        const handleMessage = (message: CanvasMessage) => {
+            switch (message.kind) {
+                case "shape":
+                    message.action === "delete"
+                        ? setShapes((prev) => prev.filter((s) => s.id !== message.id))
+                        : setShapes((prev) => upsert(prev, message.payload));
+                    break;
+                case "note":
+                    message.action === "delete"
+                        ? setNotes((prev) => prev.filter((s) => s.id !== message.id))
+                        : setNotes((prev) => upsert(prev, message.payload))
+                    break;
+                case "text":
+                    message.action === "delete"
+                        ? setTexts((prev) => prev.filter((s) => s.id !== message.id))
+                        : setTexts((prev) => upsert(prev, message.payload));
+                    break;
+            }
+        }
+        socket.on("shape-message", handleMessage);
+        return () => {
+            socket.off("shape-message", handleMessage)
+        }
+    }, [socket])
+
+    useEffect(() => {
+        shapesRef.current = shapes;
+    }, [shapes]);
+
 
     function clamp(value: number, min: number, max: number) {
         return Math.max(min, Math.min(value, max));
@@ -57,14 +120,17 @@ export default function CanvasEditor({ selectedTool, selectedColour }: CanvasEdi
 
     function deleteShape(id: string) {
         setShapes((prev) => prev.filter((shape) => shape.id !== id));
+        broadcast({ kind: "shape", action: "delete", id });
     }
 
     function deleteNote(id: number) {
         setNotes((prev) => prev.filter((note) => note.id !== id));
+        broadcast({ kind: "note", action: "delete", id });
     }
 
     function deleteText(id: string) {
         setTexts((prev) => prev.filter((text) => text.id !== id));
+        broadcast({ kind: "text", action: "delete", id });
     }
 
     function getCanvasCursorStyle(): React.CSSProperties {
@@ -99,6 +165,7 @@ export default function CanvasEditor({ selectedTool, selectedColour }: CanvasEdi
                 height: 48,
             };
             setTexts((prev) => [...prev, newText]);
+            broadcast({ kind: "text", action: "add", payload: newText })
             return;
         }
         if (selectedTool === "note") {
@@ -113,6 +180,7 @@ export default function CanvasEditor({ selectedTool, selectedColour }: CanvasEdi
                 height: 200,
             }
             setNotes((prev) => [...prev, newNote]);
+            broadcast({ kind: "note", action: "add", payload: newNote })
             return;
         }
         const { x, y } = getCanvasPoint(e.clientX, e.clientY);
@@ -122,7 +190,7 @@ export default function CanvasEditor({ selectedTool, selectedColour }: CanvasEdi
             ? { id, type: "line", x1: x, y1: y, x2: x, y2: y, colour: selectedColour }
             : selectedTool === "triangle"
                 ? { id, type: "triangle", p1: { x, y }, p2: { x, y }, p3: { x, y }, colour: selectedColour }
-            : { id, type: selectedTool, x, y, width: 0, height: 0, colour: selectedColour };
+                : { id, type: selectedTool, x, y, width: 0, height: 0, colour: selectedColour };
 
         setShapes((prev) => [...prev, newShape]);
         drawingId.current = id;
@@ -240,6 +308,25 @@ export default function CanvasEditor({ selectedTool, selectedColour }: CanvasEdi
     }
 
     function handlePointerUp() {
+        const wasDrawing = drawingId.current !== null;
+        const movedId =
+            drawingId.current ??
+            lineDrag.current?.id ??
+            triangleDrag.current?.id ??
+            triangleVertexDrag.current?.id ??
+            null;
+
+        if (movedId) {
+            const shape = shapesRef.current.find((s) => s.id === movedId);
+            if (shape) {
+                broadcast({
+                    kind: "shape",
+                    action: wasDrawing ? "add" : "update",
+                    payload: shape,
+                });
+            }
+        }
+
         drawingId.current = null;
         startPoint.current = null;
         lineDrag.current = null;
@@ -441,26 +528,24 @@ export default function CanvasEditor({ selectedTool, selectedColour }: CanvasEdi
                             }
                         }}
                         onDragStop={(e, data) => {
+                            const updated = { ...shape, x: data.x, y: data.y };
                             setShapes((prev) =>
-                                prev.map((s) =>
-                                    s.id === shape.id ? { ...shape, x: data.x, y: data.y } : s
-                                )
+                                prev.map((s) => (s.id === shape.id ? updated : s))
                             );
+                            broadcast({ kind: "shape", action: "update", payload: updated });
                         }}
                         onResizeStop={(e, direction, ref, delta, position) => {
+                            const updated = {
+                                ...shape,
+                                width: parseInt(ref.style.width),
+                                height: parseInt(ref.style.height),
+                                x: position.x,
+                                y: position.y,
+                            };
                             setShapes((prev) =>
-                                prev.map((s) =>
-                                    s.id === shape.id
-                                        ? {
-                                            ...shape,
-                                            width: parseInt(ref.style.width),
-                                            height: parseInt(ref.style.height),
-                                            x: position.x,
-                                            y: position.y,
-                                        }
-                                        : s
-                                )
+                                prev.map((s) => (s.id === shape.id ? updated : s))
                             );
+                            broadcast({ kind: "shape", action: "update", payload: updated });
                         }}
                     >
                         <div className="h-full w-full" style={getObjectCursorStyle()}>
@@ -484,11 +569,11 @@ export default function CanvasEditor({ selectedTool, selectedColour }: CanvasEdi
                     onDragStart={() => setIsDraggingItem(true)}
                     onDragStop={(e, data) => {
                         setIsDraggingItem(false);
+                        const updated = { ...note, x: data.x, y: data.y };
                         setNotes((prev) =>
-                            prev.map((n) =>
-                                n.id === note.id ? { ...n, x: data.x, y: data.y } : n
-                            )
+                            prev.map((n) => (n.id === note.id ? updated : n))
                         );
+                        broadcast({ kind: "note", action: "update", payload: updated });
                     }}
                 >
                     <div className="h-full w-full" style={getObjectCursorStyle()}>
@@ -511,26 +596,24 @@ export default function CanvasEditor({ selectedTool, selectedColour }: CanvasEdi
                     onDragStart={() => setIsDraggingItem(true)}
                     onDragStop={(e, data) => {
                         setIsDraggingItem(false);
+                        const updated = { ...textBox, x: data.x, y: data.y };
                         setTexts((prev) =>
-                            prev.map((text) =>
-                                text.id === textBox.id ? { ...textBox, x: data.x, y: data.y } : text
-                            )
+                            prev.map((text) => (text.id === textBox.id ? updated : text))
                         );
+                        broadcast({ kind: "text", action: "update", payload: updated });
                     }}
                     onResizeStop={(e, direction, ref, delta, position) => {
+                        const updated = {
+                            ...textBox,
+                            width: parseInt(ref.style.width),
+                            height: parseInt(ref.style.height),
+                            x: position.x,
+                            y: position.y,
+                        };
                         setTexts((prev) =>
-                            prev.map((text) =>
-                                text.id === textBox.id
-                                    ? {
-                                        ...textBox,
-                                        width: parseInt(ref.style.width),
-                                        height: parseInt(ref.style.height),
-                                        x: position.x,
-                                        y: position.y,
-                                    }
-                                    : text
-                            )
+                            prev.map((text) => (text.id === textBox.id ? updated : text))
                         );
+                        broadcast({ kind: "text", action: "update", payload: updated });
                     }}
                 >
                     <div className="h-full w-full" style={getObjectCursorStyle()}>

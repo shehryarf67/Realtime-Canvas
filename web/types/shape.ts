@@ -55,7 +55,7 @@ export type Shape = BoxShape | TriangleShape | LineShape;
 
 export interface Note {
   id: number,
-  text: string, 
+  text: string,
   color: string,
   x: number,
   y: number,
@@ -72,3 +72,11 @@ export type TextBox = {
   width: number;
   height: number;
 };
+
+export type CanvasMessage =
+  | { kind: "shape"; action: "add" | "update"; payload: Shape }
+  | { kind: "shape"; action: "delete"; id: string }
+  | { kind: "note"; action: "add" | "update"; payload: Note }
+  | { kind: "note"; action: "delete"; id: number }
+  | { kind: "text"; action: "add" | "update"; payload: TextBox }
+  | { kind: "text"; action: "delete"; id: string }
