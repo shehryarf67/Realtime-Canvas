@@ -11,6 +11,9 @@ type CanvasEditorProps = {
 
 const ERASER_CURSOR = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='5' fill='white' stroke='black' stroke-width='2'/%3E%3C/svg%3E") 8 8, auto`;
 
+const TEXT_COLOUR = "#000000";
+const NOTE_COLOUR = "#fff9b1";
+
 export default function CanvasEditor({ selectedTool, selectedColour }: CanvasEditorProps) {
     const [shapes, setShapes] = useState<Shape[]>([]);
     const [isDrawing, setIsDrawing] = useState(false);
@@ -33,6 +36,7 @@ export default function CanvasEditor({ selectedTool, selectedColour }: CanvasEdi
     } | null>(null);
     const [notes, setNotes] = useState<Note[]>([]);
     const [texts, setTexts] = useState<TextBox[]>([]);
+    const [isDraggingItem, setIsDraggingItem] = useState(false);
 
     function clamp(value: number, min: number, max: number) {
         return Math.max(min, Math.min(value, max));
@@ -88,7 +92,7 @@ export default function CanvasEditor({ selectedTool, selectedColour }: CanvasEdi
             const newText: TextBox = {
                 id: crypto.randomUUID(),
                 text: "Text",
-                colour: selectedColour,
+                colour: TEXT_COLOUR,
                 x,
                 y,
                 width: 200,
@@ -102,7 +106,7 @@ export default function CanvasEditor({ selectedTool, selectedColour }: CanvasEdi
             const newNote: Note = {
                 id: Date.now(),
                 text: "New note",
-                color: selectedColour,
+                color: NOTE_COLOUR,
                 x,
                 y,
                 width: 200,
@@ -365,10 +369,11 @@ export default function CanvasEditor({ selectedTool, selectedColour }: CanvasEdi
                         )
                     );
                 }}
-                className="h-full w-full resize-none p-2 text-sm outline-none"
+                className="h-full w-full cursor-move resize-none p-2 text-sm outline-none focus:cursor-text"
                 style={{
                     backgroundColor: note.color,
                     ...(selectedTool === "eraser" ? getObjectCursorStyle() : {}),
+                    ...(isDraggingItem ? { cursor: "move" } : {}),
                 }}
             />
         )
@@ -393,10 +398,11 @@ export default function CanvasEditor({ selectedTool, selectedColour }: CanvasEdi
                         )
                     );
                 }}
-                className="h-full w-full resize-none bg-transparent p-1 text-base outline-none"
+                className="h-full w-full cursor-move resize-none bg-transparent p-1 text-base outline-none focus:cursor-text"
                 style={{
                     color: textBox.colour,
                     ...(selectedTool === "eraser" ? getObjectCursorStyle() : {}),
+                    ...(isDraggingItem ? { cursor: "move" } : {}),
                 }}
             />
         );
@@ -475,6 +481,8 @@ export default function CanvasEditor({ selectedTool, selectedColour }: CanvasEdi
                             deleteNote(note.id);
                         }
                     }}
+                    onDragStart={() => setIsDraggingItem(true)}
+                    onDragStop={() => setIsDraggingItem(false)}
                 >
                     <div className="h-full w-full" style={getObjectCursorStyle()}>
                         {renderNote(note)}
@@ -493,7 +501,9 @@ export default function CanvasEditor({ selectedTool, selectedColour }: CanvasEdi
                             deleteText(textBox.id);
                         }
                     }}
+                    onDragStart={() => setIsDraggingItem(true)}
                     onDragStop={(e, data) => {
+                        setIsDraggingItem(false);
                         setTexts((prev) =>
                             prev.map((text) =>
                                 text.id === textBox.id ? { ...textBox, x: data.x, y: data.y } : text
