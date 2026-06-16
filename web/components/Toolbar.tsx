@@ -2,14 +2,14 @@ import {MousePointer2, Square, Triangle, Minus, Type, Circle, StickyNote, Eraser
 import type { Tool } from "@/types/shape";
 
 type ToolbarProps = {
-  selectedTool: Tool;
-  onSelectTool: (tool: Tool) => void;
+  selectedTool: Tool | null;
+  onSelectTool: (tool: Tool | null) => void;
 };
 
 export default function Toolbar({ selectedTool, onSelectTool }: ToolbarProps) {
 
     return (
-        <div className="flex gap-2">
+        <div className="inline-flex gap-2">
             <button 
                 className={`p-2 bg-gray-200 hover:bg-gray-300 text-black rounded border ${selectedTool === "select" ? "ring-2 ring-blue-500 text-white" : "border-transparent"}`}
                 onClick={() => onSelectTool("select")}

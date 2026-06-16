@@ -5,7 +5,7 @@ import { Rnd } from "react-rnd";
 import { useState, useRef } from "react";
 
 type CanvasEditorProps = {
-    selectedTool: Tool;
+    selectedTool: Tool | null;
 };
 
 const ERASER_CURSOR = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='5' fill='white' stroke='black' stroke-width='2'/%3E%3C/svg%3E") 8 8, auto`;
@@ -64,7 +64,7 @@ export default function CanvasEditor({ selectedTool }: CanvasEditorProps) {
 
     function getCanvasCursorStyle(): React.CSSProperties {
         if (isDrawing) return { cursor: "crosshair" };
-        if (selectedTool === "select") return { cursor: "default" };
+        if (!selectedTool || selectedTool === "select") return { cursor: "default" };
         if (selectedTool === "eraser") return { cursor: ERASER_CURSOR };
 
         return { cursor: "crosshair" };
@@ -79,7 +79,7 @@ export default function CanvasEditor({ selectedTool }: CanvasEditorProps) {
 
     function handlePointerDown(e: React.PointerEvent<HTMLDivElement>) {
         if (e.target !== e.currentTarget) return;
-        if (selectedTool === "select" || selectedTool === "eraser") {
+        if (!selectedTool || selectedTool === "select" || selectedTool === "eraser") {
             return;
         }
         if (selectedTool === "text") {

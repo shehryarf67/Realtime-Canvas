@@ -1,13 +1,14 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { io } from "socket.io-client";
 import Toolbar from "../components/Toolbar";
 import CanvasEditor from "../components/CanvasEditor";
-
-type Tool = "select" | "square" | "circle" | "triangle" | "line" | "text" | "note" | "eraser";
+import type { Tool } from "@/types/shape";
 
 export default function Home() {
-  const [selectedTool, setSelectedTool] = useState<Tool>("select");
+  const [selectedTool, setSelectedTool] = useState<Tool | null>("select");
+  const toolbarRef = useRef<HTMLDivElement | null>(null);
+  const canvasRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     const socket = io("http://localhost:4000");
@@ -15,9 +16,31 @@ export default function Home() {
     return () => { socket.disconnect(); };
   }, []);
 
+  useEffect(() => {
+    function handleDocumentPointerDown(e: PointerEvent) {
+      const target = e.target as Node;
+      const clickedToolbar = toolbarRef.current?.contains(target);
+      const clickedCanvas = canvasRef.current?.contains(target);
+
+      if (!clickedToolbar && !clickedCanvas) {
+        setSelectedTool(null);
+      }
+    }
+
+    document.addEventListener("pointerdown", handleDocumentPointerDown);
+
+    return () => {
+      document.removeEventListener("pointerdown", handleDocumentPointerDown);
+    };
+  }, []);
+
   return <main className="flex flex-col p-8 bg-white text-black">
     My Canvas App
-    <Toolbar selectedTool={selectedTool} onSelectTool={setSelectedTool} />
-    <CanvasEditor selectedTool={selectedTool} />
+    <div ref={toolbarRef} className="w-fit self-start">
+      <Toolbar selectedTool={selectedTool} onSelectTool={setSelectedTool} />
+    </div>
+    <div ref={canvasRef}>
+      <CanvasEditor selectedTool={selectedTool} />
+    </div>
   </main>;
 }
