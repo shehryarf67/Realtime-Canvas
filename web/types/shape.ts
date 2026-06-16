@@ -59,3 +59,12 @@ export interface Note {
   width: number,
   height: number,
 }
+
+export type TextBox = {
+  id: string;
+  text: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};

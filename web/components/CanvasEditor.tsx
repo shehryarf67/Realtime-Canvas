@@ -1,6 +1,6 @@
 "use client";
 
-import type { Tool, Shape, BoxShape, LineShape, TriangleShape, Point, Note } from "@/types/shape";
+import type { Tool, Shape, BoxShape, LineShape, TriangleShape, Point, Note, TextBox } from "@/types/shape";
 import { Rnd } from "react-rnd";
 import { useState, useRef } from "react";
 
@@ -28,6 +28,7 @@ export default function CanvasEditor({ selectedTool }: CanvasEditorProps) {
         vertex: "p1" | "p2" | "p3";
     } | null>(null);
     const [notes, setNotes] = useState<Note[]>([]);
+    const [texts, setTexts] = useState<TextBox[]>([]);
 
     function clamp(value: number, min: number, max: number) {
         return Math.max(min, Math.min(value, max));
@@ -54,9 +55,26 @@ export default function CanvasEditor({ selectedTool }: CanvasEditorProps) {
         setNotes((prev) => prev.filter((note) => note.id !== id));
     }
 
+    function deleteText(id: string) {
+        setTexts((prev) => prev.filter((text) => text.id !== id));
+    }
+
     function handlePointerDown(e: React.PointerEvent<HTMLDivElement>) {
         if (e.target !== e.currentTarget) return;
-        if (selectedTool === "select" || selectedTool === "eraser" || selectedTool === "text") {
+        if (selectedTool === "select" || selectedTool === "eraser") {
+            return;
+        }
+        if (selectedTool === "text") {
+            const { x, y } = getCanvasPoint(e.clientX, e.clientY);
+            const newText: TextBox = {
+                id: crypto.randomUUID(),
+                text: "Text",
+                x,
+                y,
+                width: 180,
+                height: 48,
+            };
+            setTexts((prev) => [...prev, newText]);
             return;
         }
         if (selectedTool === "note") {
@@ -328,6 +346,30 @@ export default function CanvasEditor({ selectedTool }: CanvasEditorProps) {
         )
     }
 
+    function renderText(textBox: TextBox) {
+        return (
+            <textarea
+                value={textBox.text}
+                onPointerDown={(e) => {
+                    e.stopPropagation();
+                    if (selectedTool === "eraser") {
+                        deleteText(textBox.id);
+                    }
+                }}
+                onChange={(e) => {
+                    const value = e.target.value;
+
+                    setTexts((prev) =>
+                        prev.map((text) =>
+                            text.id === textBox.id ? { ...text, text: value } : text
+                        )
+                    );
+                }}
+                className="h-full w-full resize-none bg-transparent p-1 text-base text-black outline-none"
+            />
+        );
+    }
+
     return (
         <div
             ref={canvasRef}
@@ -398,6 +440,44 @@ export default function CanvasEditor({ selectedTool }: CanvasEditorProps) {
                     }}
                 >
                     {renderNote(note)}
+                </Rnd>
+            ))}
+            {texts.map((textBox) => (
+                <Rnd
+                    key={textBox.id}
+                    size={{ width: textBox.width, height: textBox.height }}
+                    position={{ x: textBox.x, y: textBox.y }}
+                    bounds="parent"
+                    onPointerDown={(e: React.PointerEvent<HTMLElement>) => {
+                        if (selectedTool === "eraser") {
+                            e.stopPropagation();
+                            deleteText(textBox.id);
+                        }
+                    }}
+                    onDragStop={(e, data) => {
+                        setTexts((prev) =>
+                            prev.map((text) =>
+                                text.id === textBox.id ? { ...textBox, x: data.x, y: data.y } : text
+                            )
+                        );
+                    }}
+                    onResizeStop={(e, direction, ref, delta, position) => {
+                        setTexts((prev) =>
+                            prev.map((text) =>
+                                text.id === textBox.id
+                                    ? {
+                                        ...textBox,
+                                        width: parseInt(ref.style.width),
+                                        height: parseInt(ref.style.height),
+                                        x: position.x,
+                                        y: position.y,
+                                    }
+                                    : text
+                            )
+                        );
+                    }}
+                >
+                    {renderText(textBox)}
                 </Rnd>
             ))}
         </div>
