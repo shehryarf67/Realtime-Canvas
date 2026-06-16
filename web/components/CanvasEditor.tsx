@@ -8,8 +8,11 @@ type CanvasEditorProps = {
     selectedTool: Tool;
 };
 
+const ERASER_CURSOR = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='5' fill='white' stroke='black' stroke-width='2'/%3E%3C/svg%3E") 8 8, auto`;
+
 export default function CanvasEditor({ selectedTool }: CanvasEditorProps) {
     const [shapes, setShapes] = useState<Shape[]>([]);
+    const [isDrawing, setIsDrawing] = useState(false);
     const canvasRef = useRef<HTMLDivElement | null>(null);
     const drawingId = useRef<string | null>(null);
     const startPoint = useRef<{ x: number; y: number } | null>(null);
@@ -59,6 +62,21 @@ export default function CanvasEditor({ selectedTool }: CanvasEditorProps) {
         setTexts((prev) => prev.filter((text) => text.id !== id));
     }
 
+    function getCanvasCursorStyle(): React.CSSProperties {
+        if (isDrawing) return { cursor: "crosshair" };
+        if (selectedTool === "select") return { cursor: "default" };
+        if (selectedTool === "eraser") return { cursor: ERASER_CURSOR };
+
+        return { cursor: "crosshair" };
+    }
+
+    function getObjectCursorStyle(): React.CSSProperties {
+        if (isDrawing) return { cursor: "crosshair" };
+        if (selectedTool === "eraser") return { cursor: ERASER_CURSOR };
+
+        return { cursor: "move" };
+    }
+
     function handlePointerDown(e: React.PointerEvent<HTMLDivElement>) {
         if (e.target !== e.currentTarget) return;
         if (selectedTool === "select" || selectedTool === "eraser") {
@@ -103,6 +121,7 @@ export default function CanvasEditor({ selectedTool }: CanvasEditorProps) {
         setShapes((prev) => [...prev, newShape]);
         drawingId.current = id;
         startPoint.current = { x, y };
+        setIsDrawing(true);
     }
 
     function handlePointerMove(e: React.PointerEvent<HTMLDivElement>) {
@@ -220,6 +239,7 @@ export default function CanvasEditor({ selectedTool }: CanvasEditorProps) {
         lineDrag.current = null;
         triangleDrag.current = null;
         triangleVertexDrag.current = null;
+        setIsDrawing(false);
     }
 
 
@@ -296,7 +316,8 @@ export default function CanvasEditor({ selectedTool }: CanvasEditorProps) {
                     stroke="black"
                     strokeWidth="2"
                     vectorEffect="non-scaling-stroke"
-                    className="pointer-events-auto cursor-move"
+                    className="pointer-events-auto"
+                    style={getObjectCursorStyle()}
                     onPointerDown={(e) => handleTrianglePointerDown(e, shape)}
                 />
             </svg>
@@ -314,7 +335,8 @@ export default function CanvasEditor({ selectedTool }: CanvasEditorProps) {
                     stroke="black"
                     strokeWidth="2"
                     vectorEffect="non-scaling-stroke"
-                    className="pointer-events-auto cursor-move"
+                    className="pointer-events-auto"
+                    style={getObjectCursorStyle()}
                     onPointerDown={(e) => handleLinePointerDown(e, shape)}
                 />
                 {/* TODO: per-endpoint handles */}
@@ -342,6 +364,7 @@ export default function CanvasEditor({ selectedTool }: CanvasEditorProps) {
                     );
                 }}
                 className="h-full w-full resize-none bg-yellow-100 p-2 text-sm outline-none"
+                style={selectedTool === "eraser" ? getObjectCursorStyle() : undefined}
             />
         )
     }
@@ -366,6 +389,7 @@ export default function CanvasEditor({ selectedTool }: CanvasEditorProps) {
                     );
                 }}
                 className="h-full w-full resize-none bg-transparent p-1 text-base text-black outline-none"
+                style={selectedTool === "eraser" ? getObjectCursorStyle() : undefined}
             />
         );
     }
@@ -378,6 +402,7 @@ export default function CanvasEditor({ selectedTool }: CanvasEditorProps) {
             onPointerUp={handlePointerUp}
             onPointerLeave={handlePointerUp}
             className="relative mt-4 min-h-[85dvh] w-full border"
+            style={getCanvasCursorStyle()}
         >
             {shapes.map((shape) => {
                 if (shape.type === "line") {
@@ -393,6 +418,8 @@ export default function CanvasEditor({ selectedTool }: CanvasEditorProps) {
                         size={{ width: shape.width, height: shape.height }}
                         position={{ x: shape.x, y: shape.y }}
                         bounds="parent"
+                        disableDragging={isDrawing}
+                        enableResizing={!isDrawing}
                         onPointerDown={(e: React.PointerEvent<HTMLElement>) => {
                             if (selectedTool === "eraser") {
                                 e.stopPropagation();
@@ -422,7 +449,9 @@ export default function CanvasEditor({ selectedTool }: CanvasEditorProps) {
                             );
                         }}
                     >
-                        {renderBoxShape(shape)}
+                        <div className="h-full w-full" style={getObjectCursorStyle()}>
+                            {renderBoxShape(shape)}
+                        </div>
                     </Rnd>
                 );
             })}
@@ -439,7 +468,9 @@ export default function CanvasEditor({ selectedTool }: CanvasEditorProps) {
                         }
                     }}
                 >
-                    {renderNote(note)}
+                    <div className="h-full w-full" style={getObjectCursorStyle()}>
+                        {renderNote(note)}
+                    </div>
                 </Rnd>
             ))}
             {texts.map((textBox) => (
@@ -477,7 +508,9 @@ export default function CanvasEditor({ selectedTool }: CanvasEditorProps) {
                         );
                     }}
                 >
-                    {renderText(textBox)}
+                    <div className="h-full w-full" style={getObjectCursorStyle()}>
+                        {renderText(textBox)}
+                    </div>
                 </Rnd>
             ))}
         </div>
