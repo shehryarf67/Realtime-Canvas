@@ -71,7 +71,7 @@ export default function CanvasEditor({ selectedTool }: CanvasEditorProps) {
                 text: "Text",
                 x,
                 y,
-                width: 180,
+                width: 200,
                 height: 48,
             };
             setTexts((prev) => [...prev, newText]);
