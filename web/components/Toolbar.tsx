@@ -4,9 +4,22 @@ import type { Tool } from "@/types/shape";
 type ToolbarProps = {
   selectedTool: Tool | null;
   onSelectTool: (tool: Tool | null) => void;
+  selectedColour: string;
+  onSelectedColourChange: (colour: string) => void;
 };
 
-export default function Toolbar({ selectedTool, onSelectTool }: ToolbarProps) {
+const colours = [
+  "#ffffff",
+  "#000000",
+  "#ef4444",
+  "#f97316",
+  "#eab308",
+  "#22c55e",
+  "#3b82f6",
+  "#a855f7",
+];
+
+export default function Toolbar({ selectedTool, onSelectTool, selectedColour, onSelectedColourChange }: ToolbarProps) {
 
     return (
         <div className="inline-flex gap-2">
@@ -58,6 +71,15 @@ export default function Toolbar({ selectedTool, onSelectTool }: ToolbarProps) {
             >
                 <Eraser size={18} />
             </button>
+            <div className="mx-1 h-10 w-px bg-gray-300" />
+            {colours.map((colour) => (
+                <button
+                    key={colour}
+                    className={`h-10 w-10 rounded-full border hover:ring-2 hover:ring-blue-500 ${selectedColour === colour ? "ring-2 ring-blue-500" : "border-gray-300"}`}
+                    style={{ backgroundColor: colour }}
+                    onClick={() => onSelectedColourChange(colour)}
+                />
+            ))}
         </div>
     )
 }

@@ -14,6 +14,7 @@ type BoxShapeBase = {
   y: number;
   width: number;
   height: number;
+  colour: string;
 };
 
 export type SquareShape = BoxShapeBase & {
@@ -37,6 +38,7 @@ export type TriangleShape = {
   p1: Point;
   p2: Point;
   p3: Point;
+  colour: string;
 };
 
 export type LineShape = {
@@ -46,6 +48,7 @@ export type LineShape = {
   y1: number;
   x2: number;
   y2: number;
+  colour: string;
 };
 
 export type Shape = BoxShape | TriangleShape | LineShape;
@@ -63,6 +66,7 @@ export interface Note {
 export type TextBox = {
   id: string;
   text: string;
+  colour: string;
   x: number;
   y: number;
   width: number;

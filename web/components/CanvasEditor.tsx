@@ -6,11 +6,12 @@ import { useState, useRef } from "react";
 
 type CanvasEditorProps = {
     selectedTool: Tool | null;
+    selectedColour: string;
 };
 
 const ERASER_CURSOR = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='5' fill='white' stroke='black' stroke-width='2'/%3E%3C/svg%3E") 8 8, auto`;
 
-export default function CanvasEditor({ selectedTool }: CanvasEditorProps) {
+export default function CanvasEditor({ selectedTool, selectedColour }: CanvasEditorProps) {
     const [shapes, setShapes] = useState<Shape[]>([]);
     const [isDrawing, setIsDrawing] = useState(false);
     const canvasRef = useRef<HTMLDivElement | null>(null);
@@ -87,6 +88,7 @@ export default function CanvasEditor({ selectedTool }: CanvasEditorProps) {
             const newText: TextBox = {
                 id: crypto.randomUUID(),
                 text: "Text",
+                colour: selectedColour,
                 x,
                 y,
                 width: 200,
@@ -100,7 +102,7 @@ export default function CanvasEditor({ selectedTool }: CanvasEditorProps) {
             const newNote: Note = {
                 id: Date.now(),
                 text: "New note",
-                color: "#fff",
+                color: selectedColour,
                 x,
                 y,
                 width: 200,
@@ -113,10 +115,10 @@ export default function CanvasEditor({ selectedTool }: CanvasEditorProps) {
         const id = crypto.randomUUID();
 
         const newShape: Shape = selectedTool === "line"
-            ? { id, type: "line", x1: x, y1: y, x2: x, y2: y }
+            ? { id, type: "line", x1: x, y1: y, x2: x, y2: y, colour: selectedColour }
             : selectedTool === "triangle"
-                ? { id, type: "triangle", p1: { x, y }, p2: { x, y }, p3: { x, y } }
-            : { id, type: selectedTool, x, y, width: 0, height: 0 };
+                ? { id, type: "triangle", p1: { x, y }, p2: { x, y }, p3: { x, y }, colour: selectedColour }
+            : { id, type: selectedTool, x, y, width: 0, height: 0, colour: selectedColour };
 
         setShapes((prev) => [...prev, newShape]);
         drawingId.current = id;
@@ -295,9 +297,9 @@ export default function CanvasEditor({ selectedTool }: CanvasEditorProps) {
     function renderBoxShape(shape: BoxShape) {
         switch (shape.type) {
             case "square":
-                return <div className="h-full w-full border-2 border-black" />;
+                return <div className="h-full w-full border-2 border-black" style={{ backgroundColor: shape.colour }} />;
             case "circle":
-                return <div className="h-full w-full rounded-full border-2 border-black" />;
+                return <div className="h-full w-full rounded-full border-2 border-black" style={{ backgroundColor: shape.colour }} />;
             default: {
                 const _exhaustive: never = shape;
                 return _exhaustive;
@@ -312,7 +314,7 @@ export default function CanvasEditor({ selectedTool }: CanvasEditorProps) {
             <svg key={shape.id} className="pointer-events-none absolute inset-0 h-full w-full overflow-visible">
                 <polygon
                     points={points}
-                    fill="transparent"
+                    fill={shape.colour}
                     stroke="black"
                     strokeWidth="2"
                     vectorEffect="non-scaling-stroke"
@@ -332,7 +334,7 @@ export default function CanvasEditor({ selectedTool }: CanvasEditorProps) {
                     y1={shape.y1}
                     x2={shape.x2}
                     y2={shape.y2}
-                    stroke="black"
+                    stroke={shape.colour}
                     strokeWidth="2"
                     vectorEffect="non-scaling-stroke"
                     className="pointer-events-auto"
@@ -363,8 +365,11 @@ export default function CanvasEditor({ selectedTool }: CanvasEditorProps) {
                         )
                     );
                 }}
-                className="h-full w-full resize-none bg-yellow-100 p-2 text-sm outline-none"
-                style={selectedTool === "eraser" ? getObjectCursorStyle() : undefined}
+                className="h-full w-full resize-none p-2 text-sm outline-none"
+                style={{
+                    backgroundColor: note.color,
+                    ...(selectedTool === "eraser" ? getObjectCursorStyle() : {}),
+                }}
             />
         )
     }
@@ -388,8 +393,11 @@ export default function CanvasEditor({ selectedTool }: CanvasEditorProps) {
                         )
                     );
                 }}
-                className="h-full w-full resize-none bg-transparent p-1 text-base text-black outline-none"
-                style={selectedTool === "eraser" ? getObjectCursorStyle() : undefined}
+                className="h-full w-full resize-none bg-transparent p-1 text-base outline-none"
+                style={{
+                    color: textBox.colour,
+                    ...(selectedTool === "eraser" ? getObjectCursorStyle() : {}),
+                }}
             />
         );
     }

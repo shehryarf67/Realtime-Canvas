@@ -7,6 +7,7 @@ import type { Tool } from "@/types/shape";
 
 export default function Home() {
   const [selectedTool, setSelectedTool] = useState<Tool | null>("select");
+  const [selectedColour, setSelectedColour] = useState<string>("#ffffff");
   const toolbarRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLDivElement | null>(null);
 
@@ -27,20 +28,21 @@ export default function Home() {
       }
     }
 
-    document.addEventListener("pointerdown", handleDocumentPointerDown);
+    document.addEventListener("pointerdown", handleDocumentPointerDown, true);
 
     return () => {
-      document.removeEventListener("pointerdown", handleDocumentPointerDown);
+      document.removeEventListener("pointerdown", handleDocumentPointerDown, true);
     };
   }, []);
 
   return <main className="flex flex-col p-8 bg-white text-black">
     My Canvas App
     <div ref={toolbarRef} className="w-fit self-start">
-      <Toolbar selectedTool={selectedTool} onSelectTool={setSelectedTool} />
+      <Toolbar selectedTool={selectedTool} onSelectTool={setSelectedTool} 
+      selectedColour={selectedColour} onSelectedColourChange={setSelectedColour} />
     </div>
     <div ref={canvasRef}>
-      <CanvasEditor selectedTool={selectedTool} />
+      <CanvasEditor selectedTool={selectedTool} selectedColour={selectedColour} />
     </div>
   </main>;
 }
