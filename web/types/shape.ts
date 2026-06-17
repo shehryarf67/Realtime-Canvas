@@ -80,3 +80,9 @@ export type CanvasMessage =
   | { kind: "note"; action: "delete"; id: number }
   | { kind: "text"; action: "add" | "update"; payload: TextBox }
   | { kind: "text"; action: "delete"; id: string }
+
+export type CanvasState = {
+  shapes: Shape[];
+  notes: Note[];
+  texts: TextBox[];
+};

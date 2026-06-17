@@ -1,6 +1,6 @@
 "use client";
 
-import type { Tool, Shape, BoxShape, LineShape, TriangleShape, Point, Note, TextBox, CanvasMessage } from "@/types/shape";
+import type { Tool, Shape, BoxShape, LineShape, TriangleShape, Point, Note, TextBox, CanvasMessage, CanvasState } from "@/types/shape";
 import { Rnd } from "react-rnd";
 import { useSocket } from "@/contexts/SocketContext";
 import { useEffect, useRef, useState, useCallback } from "react";
@@ -95,6 +95,22 @@ export default function CanvasEditor({ selectedTool, selectedColour }: CanvasEdi
             socket.off("shape-message", handleMessage)
         }
     }, [socket])
+
+    useEffect(() => {
+        if (!socket) return;
+
+        const handleState = (state: CanvasState) => {
+            setShapes(state.shapes);
+            setNotes(state.notes);
+            setTexts(state.texts);
+        };
+
+        socket.on("canvas-state", handleState);
+        return () => {
+            socket.off("canvas-state", handleState);
+        };
+    }, [socket]);
+
 
     useEffect(() => {
         shapesRef.current = shapes;
