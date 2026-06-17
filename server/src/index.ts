@@ -1,5 +1,7 @@
+import "dotenv/config";
 import { createServer } from "http";
 import { Server } from "socket.io";
+import { connectToDatabase } from "./db.js";
 
 const PORT = Number(process.env.PORT) || 4000;
 const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || "http://localhost:3000";
@@ -30,6 +32,15 @@ io.on("connection", (socket) => {
   });
 });
 
-httpServer.listen(PORT, () => {
-  console.log(`socket server listening on :${PORT}`);
-});
+// Connect to MongoDB before accepting connections. The `items()` helper in
+// db.ts is ready for when you add snapshot persistence.
+connectToDatabase()
+  .then(() => {
+    httpServer.listen(PORT, () => {
+      console.log(`socket server listening on :${PORT}`);
+    });
+  })
+  .catch((err) => {
+    console.error("Failed to connect to MongoDB:", err);
+    process.exit(1);
+  });
