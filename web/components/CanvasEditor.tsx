@@ -100,9 +100,9 @@ export default function CanvasEditor({ selectedTool, selectedColour }: CanvasEdi
         if (!socket) return;
 
         const handleState = (state: CanvasState) => {
-            setShapes(state.shapes);
-            setNotes(state.notes);
-            setTexts(state.texts);
+            setShapes((prev) => state.shapes.reduce((acc, shape) => upsert(acc, shape), prev));
+            setNotes((prev) => state.notes.reduce((acc, note) => upsert(acc, note), prev));
+            setTexts((prev) => state.texts.reduce((acc, text) => upsert(acc, text), prev));
         };
 
         socket.on("canvas-state", handleState);
