@@ -44,11 +44,11 @@ export default function Home() {
   }
 
   return (
-    <main className="relative min-h-screen w-full overflow-hidden bg-white text-neutral-900">
-      {/* Faint dot-grid background */}
+    <main className="relative min-h-screen w-full overflow-hidden bg-[#f4f6fb] text-neutral-900">
+      {/* Dot-grid background — slate dots on a soft cool off-white read clearly without harsh contrast */}
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle,_#0f172a_1px,_transparent_1px)] bg-[length:26px_26px] opacity-[0.06]"
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle,_#94a3b8_1.3px,_transparent_1.4px)] bg-[length:24px_24px] opacity-50"
       />
 
       {/* Soft cool light wash so the page reads as lit, not flat */}
@@ -58,11 +58,75 @@ export default function Home() {
       />
 
       {/* Ghosted, purely-atmospheric canvas elements — a small connected mini-canvas
-          parked in the right margin. Non-interactive and hidden until there is room. */}
+          parked in the right margin. Non-interactive and hidden until there is room.
+          Everything here is gently animated to suggest a live, collaborative board. */}
       <div
         aria-hidden="true"
         className="pointer-events-none absolute inset-0 hidden select-none xl:block"
       >
+        {/* Keyframes scoped to this atmospheric layer. All motion is paused under
+            prefers-reduced-motion so the page stays calm for those who ask for it. */}
+        <style>{`
+          @keyframes co-maya-move {
+            0%   { transform: translate(0, 0); }
+            20%  { transform: translate(-46px, 34px); }
+            45%  { transform: translate(34px, 96px); }
+            70%  { transform: translate(78px, 40px); }
+            100% { transform: translate(0, 0); }
+          }
+          @keyframes co-devin-move {
+            0%   { transform: translate(0, 0); }
+            25%  { transform: translate(58px, -38px); }
+            55%  { transform: translate(-30px, -74px); }
+            80%  { transform: translate(-66px, 18px); }
+            100% { transform: translate(0, 0); }
+          }
+          @keyframes co-glow {
+            0%, 100% { filter: drop-shadow(0 0 0 transparent); }
+            50%      { filter: drop-shadow(0 0 7px var(--co-glow)); }
+          }
+          /* A click ripple that fires once per loop, timed to a path waypoint. */
+          @keyframes co-click {
+            0%, 42%   { transform: scale(0); opacity: 0; }
+            46%       { transform: scale(0.35); opacity: 0.55; }
+            60%, 100% { transform: scale(1.7); opacity: 0; }
+          }
+          @keyframes co-drag {
+            0%   { transform: translate(0, 0) rotate(0deg); }
+            30%  { transform: translate(44px, 64px) rotate(10deg); }
+            55%  { transform: translate(150px, 30px) rotate(-6deg); }
+            80%  { transform: translate(60px, -14px) rotate(4deg); }
+            100% { transform: translate(0, 0) rotate(0deg); }
+          }
+          /* Shape being added then removed, over and over. */
+          @keyframes co-pop {
+            0%, 6%    { opacity: 0; transform: scale(0.6); }
+            14%, 82%  { opacity: 1; transform: scale(1); }
+            92%, 100% { opacity: 0; transform: scale(0.6); }
+          }
+          @keyframes co-ants { to { stroke-dashoffset: -20; } }
+
+          .co-maya  { animation: co-maya-move 15s ease-in-out infinite; }
+          .co-devin { animation: co-devin-move 18s ease-in-out infinite; }
+          .co-cursor svg { animation: co-glow 15s ease-in-out infinite; }
+          .co-ripple {
+            position: absolute; top: -3px; left: -3px;
+            height: 22px; width: 22px; border-radius: 9999px;
+            border: 2px solid var(--co-glow);
+            transform: scale(0); opacity: 0;
+          }
+          .co-maya  .co-ripple { animation: co-click 15s ease-in-out infinite; }
+          .co-devin .co-ripple { animation: co-click 18s ease-in-out infinite; }
+          .co-square { animation: co-drag 13s ease-in-out infinite; }
+          .co-pop    { transform-box: fill-box; transform-origin: center; animation: co-pop 11s ease-in-out infinite; }
+          .co-ants   { animation: co-ants 1.1s linear infinite; }
+
+          @media (prefers-reduced-motion: reduce) {
+            .co-maya, .co-devin, .co-cursor svg, .co-ripple,
+            .co-square, .co-pop, .co-ants { animation: none; }
+          }
+        `}</style>
+
         {/* Outlined rectangle + ring joined by a dashed connector whose dots land on each shape */}
         <svg
           className="absolute right-[7rem] top-[7rem] h-72 w-80 opacity-60"
@@ -70,8 +134,9 @@ export default function Home() {
           fill="none"
         >
           <rect x="20" y="24" width="150" height="96" stroke="#2563eb" strokeWidth="1.5" />
-          <circle cx="232" cy="196" r="62" stroke="#f43f5e" strokeWidth="1.5" />
+          <circle className="co-pop" cx="232" cy="196" r="62" stroke="#f43f5e" strokeWidth="1.5" />
           <path
+            className="co-ants"
             d="M95 120 C 130 140, 160 146, 190 150"
             stroke="#94a3b8"
             strokeWidth="1.5"
@@ -82,8 +147,8 @@ export default function Home() {
           <circle cx="190" cy="150" r="3.5" fill="#f43f5e" />
         </svg>
 
-        {/* Small amber square accent */}
-        <div className="absolute right-[24rem] top-[9rem] h-6 w-6 border border-[#f59e0b]/60 opacity-70" />
+        {/* Small amber square accent — being dragged around the board */}
+        <div className="co-square absolute right-[24rem] top-[9rem] h-6 w-6 border border-[#f59e0b]/60 opacity-70" />
 
         {/* Slightly tilted sticky note with short handwritten-feeling text */}
         <div className="absolute right-[9rem] bottom-[8rem] w-44 -rotate-6 bg-[#fef3c7] px-4 py-3 opacity-90 shadow-[0_10px_28px_-14px_rgba(120,90,20,0.5)]">
@@ -95,8 +160,12 @@ export default function Home() {
           </span>
         </div>
 
-        {/* Static presence cursors with name pills — atmosphere only */}
-        <div className="absolute right-[26rem] top-[19rem]">
+        {/* Live presence cursors — wandering, clicking and glowing as if driven by a teammate */}
+        <div
+          className="co-cursor co-maya absolute right-[26rem] top-[19rem]"
+          style={{ ["--co-glow" as string]: "rgba(20,184,166,0.7)" }}
+        >
+          <span className="co-ripple" />
           <svg className="h-4 w-4 text-[#14b8a6]" viewBox="0 0 16 16" fill="currentColor">
             <path d="M1 1 L1 12 L4.2 9 L6.4 14 L8.4 13.1 L6.2 8.2 L11 8 Z" />
           </svg>
@@ -104,7 +173,11 @@ export default function Home() {
             Maya
           </span>
         </div>
-        <div className="absolute right-[13rem] top-[24rem]">
+        <div
+          className="co-cursor co-devin absolute right-[13rem] top-[24rem]"
+          style={{ ["--co-glow" as string]: "rgba(139,92,246,0.7)" }}
+        >
+          <span className="co-ripple" />
           <svg className="h-4 w-4 text-[#8b5cf6]" viewBox="0 0 16 16" fill="currentColor">
             <path d="M1 1 L1 12 L4.2 9 L6.4 14 L8.4 13.1 L6.2 8.2 L11 8 Z" />
           </svg>

@@ -1,21 +1,17 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
-import { io } from "socket.io-client";
+import { useRef, useState } from "react";
+import { useParams } from "next/navigation";
 import Toolbar from "@/components/Toolbar";
 import CanvasEditor from "@/components/CanvasEditor";
 import type { Tool } from "@/types/shape";
 
-export default function Home() {
+export default function Room() {
+  const { roomId } = useParams<{ roomId: string }>();
+
   const [selectedTool, setSelectedTool] = useState<Tool | null>("select");
   const [selectedColour, setSelectedColour] = useState<string>("#ffffff");
   const toolbarRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    const socket = io("http://localhost:4000");
-    socket.on("connect", () => console.log("connected:", socket.id));
-    return () => { socket.disconnect(); };
-  }, []);
 
   function handleRootPointerDownCapture(e: React.PointerEvent<HTMLElement>) {
     const target = e.target as Node;
@@ -37,7 +33,8 @@ export default function Home() {
       selectedColour={selectedColour} onSelectedColourChange={setSelectedColour} />
     </div>
     <div ref={canvasRef}>
-      <CanvasEditor selectedTool={selectedTool} selectedColour={selectedColour} />
+      {/* key={roomId} remounts the editor on room change, so state never leaks between rooms */}
+      <CanvasEditor key={roomId} roomId={roomId} selectedTool={selectedTool} selectedColour={selectedColour} />
     </div>
   </main>;
 }

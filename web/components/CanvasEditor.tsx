@@ -5,9 +5,8 @@ import { Rnd } from "react-rnd";
 import { useSocket } from "@/contexts/SocketContext";
 import { useEffect, useRef, useState, useCallback } from "react";
 
-const ROOM_ID = "main";
-
 type CanvasEditorProps = {
+    roomId: string;
     selectedTool: Tool | null;
     selectedColour: string;
 };
@@ -24,7 +23,7 @@ const ERASER_CURSOR = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2
 const TEXT_COLOUR = "#000000";
 const NOTE_COLOUR = "#fff9b1";
 
-export default function CanvasEditor({ selectedTool, selectedColour }: CanvasEditorProps) {
+export default function CanvasEditor({ roomId, selectedTool, selectedColour }: CanvasEditorProps) {
     const [shapes, setShapes] = useState<Shape[]>([]);
     const [isDrawing, setIsDrawing] = useState(false);
     const canvasRef = useRef<HTMLDivElement | null>(null);
@@ -51,14 +50,14 @@ export default function CanvasEditor({ selectedTool, selectedColour }: CanvasEdi
     const socket = useSocket();
     const broadcast = useCallback(
         (message: CanvasMessage) => {
-            socket?.emit("shape-message", { roomId: ROOM_ID, message });
+            socket?.emit("shape-message", { roomId, message });
         },
-        [socket]
+        [socket, roomId]
     );
 
     useEffect(() => {
         if (!socket) return
-        const joinRoom = () => socket.emit("join-room", ROOM_ID);
+        const joinRoom = () => socket.emit("join-room", roomId);
 
         if (socket.connected) joinRoom();
         socket.on("connect", joinRoom);
@@ -66,7 +65,7 @@ export default function CanvasEditor({ selectedTool, selectedColour }: CanvasEdi
         return () => {
             socket.off("connect", joinRoom)
         };
-    }, [socket]);
+    }, [socket, roomId]);
 
     useEffect(() => {
         if (!socket) return
