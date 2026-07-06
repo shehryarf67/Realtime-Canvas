@@ -14,7 +14,7 @@ export type CanvasItemDoc = {
 };
 
 export type User = {
-  _id: Id;
+  _id?: Id;
   email: string;
   passwordHash: string;
   createdAt: number;
@@ -34,8 +34,9 @@ export async function connectToDatabase(): Promise<void> {
   await client.connect();
   const db = client.db("realtime_canvas");
   itemsCollection = db.collection<CanvasItemDoc>("items");
-  // Speeds up the "load everything in this room" query used on join.
   await itemsCollection.createIndex({ roomId: 1 });
+  usersCollection = db.collection<User>("users");
+  await usersCollection.createIndex({ email: 1 }, { unique: true });
   console.log("connected to MongoDB");
 }
 
