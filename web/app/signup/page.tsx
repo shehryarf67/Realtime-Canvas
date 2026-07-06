@@ -2,21 +2,45 @@
 
 import { useState, type SyntheticEvent } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import AuthScaffold, { AuthField, PasswordField } from "@/components/AuthScaffold";
+import { useAuth } from "@/contexts/AuthContext";
 
 export default function Signup() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+
+  const auth = useAuth();
+  const router = useRouter();
 
   const canSubmit =
     name.trim().length > 0 && email.trim().length > 0 && password.length > 0;
 
-  function handleSubmit(event: SyntheticEvent) {
+  async function handleSubmit(event: SyntheticEvent) {
     event.preventDefault();
-    // TODO: auth wiring goes here — create an account with { name, email,
-    // password }, then redirect. Intentionally left unimplemented (no auth
-    // routes / middleware yet).
+    setIsLoading(true);
+    setError(null);
+
+    const res = await fetch(`${process.env.NEXT_PUBLIC_SERVER_URL}/auth/signup`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ email, password }),
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      setError(data.error);
+      setIsLoading(false);
+      return;
+    }
+
+    auth?.setUser({ userId: data.userId, email: data.email });
+    router.push("/");
   }
 
   return (
@@ -64,12 +88,16 @@ export default function Signup() {
           hint="At least 8 characters."
         />
 
+        {error && (
+          <p className="text-sm text-red-600">{error}</p>
+        )}
+
         <button
           type="submit"
-          disabled={!canSubmit}
+          disabled={!canSubmit || isLoading}
           className="mt-1 inline-flex w-full items-center justify-center gap-2 bg-neutral-900 px-6 py-3.5 text-base font-medium text-white transition-colors hover:bg-neutral-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-900 disabled:cursor-not-allowed disabled:opacity-60 motion-reduce:transition-none"
         >
-          Create account
+          {isLoading ? "Creating account..." : "Create account"}
         </button>
       </form>
     </AuthScaffold>
