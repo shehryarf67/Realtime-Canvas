@@ -15,7 +15,9 @@
     "concurrently": "^9.2.1"
   },
   "dependencies": {
+    "bcrypt": "^6.0.0",
     "mongodb": "^7.4.0",
+    "mongoose": "^9.7.3",
     "react-rnd": "^10.5.3"
   }
 }

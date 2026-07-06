@@ -13,6 +13,13 @@ export type CanvasItemDoc = {
   data: unknown;
 };
 
+export type User = {
+  _id: Id;
+  email: string;
+  passwordHash: string;
+  createdAt: number;
+}
+
 const uri = process.env.MONGODB_URI;
 if (!uri) {
   throw new Error("MONGODB_URI is not set. Add it to server/.env");
@@ -36,4 +43,11 @@ export function items(): Collection<CanvasItemDoc> {
     throw new Error("Database not connected. Call connectToDatabase() first.");
   }
   return itemsCollection;
+}
+
+export function users(): Collection<User> {
+  if (!itemsCollection) {
+    throw new Error("Database not connected. Call connectToDatabase() first.");
+  }
+  return client.db("realtime_canvas").collection<User>("users");
 }
