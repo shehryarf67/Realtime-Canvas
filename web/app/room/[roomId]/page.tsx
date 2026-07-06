@@ -27,7 +27,7 @@ export default function Room() {
     className="flex flex-col p-8 bg-white text-black"
     onPointerDownCapture={handleRootPointerDownCapture}
   >
-    My Canvas App
+    Coboard - A Realtime Collaborative Whiteboard 
     <div ref={toolbarRef} className="w-fit self-start">
       <Toolbar selectedTool={selectedTool} onSelectTool={setSelectedTool}
       selectedColour={selectedColour} onSelectedColourChange={setSelectedColour} />
