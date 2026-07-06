@@ -28,6 +28,7 @@ if (!uri) {
 const client = new MongoClient(uri);
 
 let itemsCollection: Collection<CanvasItemDoc> | null = null;
+let usersCollection: Collection<User> | null = null;
 
 export async function connectToDatabase(): Promise<void> {
   await client.connect();
@@ -46,8 +47,8 @@ export function items(): Collection<CanvasItemDoc> {
 }
 
 export function users(): Collection<User> {
-  if (!itemsCollection) {
+  if (!usersCollection) {
     throw new Error("Database not connected. Call connectToDatabase() first.");
   }
-  return client.db("realtime_canvas").collection<User>("users");
+  return usersCollection;
 }
