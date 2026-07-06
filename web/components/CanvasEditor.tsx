@@ -1,9 +1,10 @@
 "use client";
 
-import type { Tool, Shape, BoxShape, LineShape, TriangleShape, Point, Note, TextBox, CanvasMessage, CanvasState } from "@/types/shape";
+import type { Tool, Shape, BoxShape, LineShape, TriangleShape, Point, Note, TextBox } from "@/types/shape";
 import { Rnd } from "react-rnd";
-import { useSocket } from "@/contexts/SocketContext";
 import { useEffect, useRef, useState, useCallback } from "react";
+import { useSocket } from "@/contexts/SocketContext";
+import type { CanvasMessage, CanvasState } from "@/types/shape";
 
 type CanvasEditorProps = {
     roomId: string;
@@ -48,27 +49,35 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour }: C
     const [texts, setTexts] = useState<TextBox[]>([]);
     const [isDraggingItem, setIsDraggingItem] = useState(false);
     const socket = useSocket();
+
     const broadcast = useCallback(
         (message: CanvasMessage) => {
             socket?.emit("shape-message", { roomId, message });
         },
-        [socket, roomId]
-    );
+        [roomId, socket]
+    )
 
     useEffect(() => {
-        if (!socket) return
+        shapesRef.current = shapes;
+    }, [shapes]);
+
+
+    // Joining room effect. Checking if socket connected or not. 
+    useEffect(() => {
+        if (!socket) return;
+
         const joinRoom = () => socket.emit("join-room", roomId);
 
         if (socket.connected) joinRoom();
         socket.on("connect", joinRoom);
 
         return () => {
-            socket.off("connect", joinRoom)
-        };
+            socket.off("connect", joinRoom);
+        }
     }, [socket, roomId]);
 
     useEffect(() => {
-        if (!socket) return
+        if (!socket) return;
 
         const handleMessage = (message: CanvasMessage) => {
             switch (message.kind) {
@@ -80,7 +89,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour }: C
                 case "note":
                     message.action === "delete"
                         ? setNotes((prev) => prev.filter((s) => s.id !== message.id))
-                        : setNotes((prev) => upsert(prev, message.payload))
+                        : setNotes((prev) => upsert(prev, message.payload));
                     break;
                 case "text":
                     message.action === "delete"
@@ -88,16 +97,19 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour }: C
                         : setTexts((prev) => upsert(prev, message.payload));
                     break;
             }
-        }
+        };
+
         socket.on("shape-message", handleMessage);
         return () => {
-            socket.off("shape-message", handleMessage)
-        }
-    }, [socket])
+            socket.off("shape-message", handleMessage);
+        };
+    }, [socket]);
 
     useEffect(() => {
         if (!socket) return;
-
+        
+        // We used the reduce function to handle the edge case where the user enters 
+        // the room the split second a change is made, so that all changes are visible
         const handleState = (state: CanvasState) => {
             setShapes((prev) => state.shapes.reduce((acc, shape) => upsert(acc, shape), prev));
             setNotes((prev) => state.notes.reduce((acc, note) => upsert(acc, note), prev));
@@ -109,12 +121,6 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour }: C
             socket.off("canvas-state", handleState);
         };
     }, [socket]);
-
-
-    useEffect(() => {
-        shapesRef.current = shapes;
-    }, [shapes]);
-
 
     function clamp(value: number, min: number, max: number) {
         return Math.max(min, Math.min(value, max));
@@ -135,17 +141,21 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour }: C
 
     function deleteShape(id: string) {
         setShapes((prev) => prev.filter((shape) => shape.id !== id));
-        broadcast({ kind: "shape", action: "delete", id });
+        // TODO: broadcast delete
+        broadcast({kind:"shape", action:"delete", id})
+        // The parameters inside the function represent CanvasMessage
     }
 
     function deleteNote(id: number) {
         setNotes((prev) => prev.filter((note) => note.id !== id));
-        broadcast({ kind: "note", action: "delete", id });
+        // TODO: broadcast delete
+        broadcast({kind:"note", action:"delete", id})
     }
 
     function deleteText(id: string) {
         setTexts((prev) => prev.filter((text) => text.id !== id));
-        broadcast({ kind: "text", action: "delete", id });
+        // TODO: broadcast delete
+        broadcast({kind:"text", action:"delete", id})  
     }
 
     function getCanvasCursorStyle(): React.CSSProperties {
@@ -180,7 +190,9 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour }: C
                 height: 48,
             };
             setTexts((prev) => [...prev, newText]);
-            broadcast({ kind: "text", action: "add", payload: newText })
+            // We use the new array due to React's immutability
+            broadcast({kind:"text", action:"add", payload: newText});
+            
             return;
         }
         if (selectedTool === "note") {
@@ -195,7 +207,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour }: C
                 height: 200,
             }
             setNotes((prev) => [...prev, newNote]);
-            broadcast({ kind: "note", action: "add", payload: newNote })
+            broadcast({kind:"note", action:"add", payload: newNote});
             return;
         }
         const { x, y } = getCanvasPoint(e.clientX, e.clientY);
@@ -323,22 +335,23 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour }: C
     }
 
     function handlePointerUp() {
+        // TODO: broadcast the finished shape (add or update)
         const wasDrawing = drawingId.current !== null;
-        const movedId =
+        const moveId = 
             drawingId.current ??
             lineDrag.current?.id ??
             triangleDrag.current?.id ??
             triangleVertexDrag.current?.id ??
             null;
-
-        if (movedId) {
-            const shape = shapesRef.current.find((s) => s.id === movedId);
+        
+        if (moveId) {
+            const shape = shapesRef.current.find((s) => s.id === moveId);
             if (shape) {
                 broadcast({
                     kind: "shape",
                     action: wasDrawing ? "add" : "update",
                     payload: shape,
-                });
+                })
             }
         }
 
@@ -349,7 +362,6 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour }: C
         triangleVertexDrag.current = null;
         setIsDrawing(false);
     }
-
 
     function handleLinePointerDown(e: React.PointerEvent<SVGLineElement>, shape: LineShape) {
         e.stopPropagation();
@@ -447,7 +459,6 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour }: C
                     style={getObjectCursorStyle()}
                     onPointerDown={(e) => handleLinePointerDown(e, shape)}
                 />
-                {/* TODO: per-endpoint handles */}
             </svg>
         );
     }

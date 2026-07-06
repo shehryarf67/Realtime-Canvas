@@ -22,60 +22,54 @@ type CanvasMessage =
 io.on("connection", (socket) => {
   console.log(`client connected: ${socket.id}`);
 
-  socket.on("join-room", async (roomId: string) => {
-    socket.join(roomId);
+  // TODO: handle join-room
+  socket.on("join-room", async (roomID: string) => {
+    socket.join(roomID);
 
     try {
-      const docs = await items().find({ roomId }).toArray();
-      const state: { shapes: unknown[]; notes: unknown[]; texts: unknown[] } = {
+      const docs = await items().find({ roomID }).toArray();
+      const state: { shapes: unknown[]; notes: unknown[], texts: unknown[] } = {
         shapes: [],
         notes: [],
-        texts: [],
-      };
+        texts: []
+      }
       for (const doc of docs) {
         if (doc.kind === "shape") state.shapes.push(doc.data);
         else if (doc.kind === "note") state.notes.push(doc.data);
-        else state.texts.push(doc.data);
+        else if (doc.kind === "text") state.texts.push(doc.data);
       }
       socket.emit("canvas-state", state);
-      console.log(`${socket.id} joined room ${roomId} (${docs.length} items)`);
     } catch (err) {
       console.error("Failed to load canvas state:", err);
     }
   });
 
-
-  socket.on(
-    "shape-message",
-    async ({ roomId, message }: { roomId: string; message: CanvasMessage }) => {
-      try {
-        const col = items();
-        if (message.action === "delete") {
-          await col.deleteOne({ _id: message.id });
-        } else {
-          await col.updateOne(
-            { _id: message.payload.id },
-            { $set: { roomId, kind: message.kind, data: message.payload } },
-            { upsert: true }
-          );
-        }
-      } catch (err) {
-        console.error("Failed to persist canvas change:", err);
+  // TODO: handle shape-message
+  socket.on("shape-message", async ({ roomId, message }: { roomId: string; message: CanvasMessage }) => {
+    try {
+      const col = items();
+      if (message.action === "delete"){
+        await col.deleteOne({_id: message.id});
       }
-
-      // Relay to everyone else in the room (unchanged from before).
-      socket.to(roomId).emit("shape-message", message);
+      else {
+        await col.updateOne(
+          { _id: message.payload.id},
+          { $set: {roomId, kind: message.kind, data: message.payload}},
+          {upsert: true}
+        )
+      }
+    } catch (err) {
+      console.error("Failed to handle shape message:", err);
     }
-  );
 
+    socket.to(roomId).emit("shape-message", message);
+  })
 
   socket.on("disconnect", () => {
     console.log(`client disconnected: ${socket.id}`);
   });
 });
 
-// Connect to MongoDB before accepting connections. The `items()` helper in
-// db.ts is ready for when you add snapshot persistence.
 connectToDatabase()
   .then(() => {
     httpServer.listen(PORT, () => {
