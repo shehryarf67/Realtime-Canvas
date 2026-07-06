@@ -2,11 +2,14 @@
 
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { generateRoomCode } from "@/lib/roomCode";
 import { addBoard, type Board } from "@/lib/boards";
+import { useAuth } from "@/contexts/AuthContext";
 
 export default function Home() {
   const router = useRouter();
+  const auth = useAuth();
   const [code, setCode] = useState("");
   const [creating, setCreating] = useState(false);
   const [joinHint, setJoinHint] = useState(false);
@@ -215,80 +218,92 @@ export default function Home() {
             no setup, no waiting.
           </p>
 
-          {/* Actions — deliberate create/join asymmetry */}
-          <div className="mt-10 flex flex-col gap-6 sm:flex-row sm:items-stretch sm:gap-8">
-            {/* Loud primary action */}
-            <button
-              type="button"
-              onClick={handleCreate}
-              disabled={creating}
-              className="group inline-flex items-center justify-center gap-2 bg-neutral-900 px-6 py-3.5 text-base font-medium text-white transition-colors hover:bg-neutral-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-900 disabled:cursor-not-allowed disabled:opacity-60 motion-reduce:transition-none"
-            >
-              <svg
-                aria-hidden="true"
-                viewBox="0 0 16 16"
-                className="h-4 w-4 transition-transform group-hover:rotate-90 motion-reduce:transition-none motion-reduce:group-hover:rotate-0"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.8"
-                strokeLinecap="round"
+          {/* Actions — swap based on auth state */}
+          {auth?.user ? (
+            <div className="mt-10 flex flex-col gap-6 sm:flex-row sm:items-stretch sm:gap-8">
+              {/* Loud primary action */}
+              <button
+                type="button"
+                onClick={handleCreate}
+                disabled={creating}
+                className="group inline-flex items-center justify-center gap-2 bg-neutral-900 px-6 py-3.5 text-base font-medium text-white transition-colors hover:bg-neutral-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-900 disabled:cursor-not-allowed disabled:opacity-60 motion-reduce:transition-none"
               >
-                <path d="M8 3 L8 13 M3 8 L13 8" />
-              </svg>
-              {creating ? "Creating board…" : "New board"}
-            </button>
-
-            {/* Quieter — join an existing board */}
-            <form
-              onSubmit={handleJoin}
-              noValidate
-              className="flex flex-1 flex-col gap-2 sm:max-w-xs sm:border-l sm:border-neutral-200 sm:pl-8"
-            >
-              <label
-                htmlFor="board-code"
-                className="text-sm font-normal text-neutral-500"
-              >
-                Have a code? Join a board
-              </label>
-              <div className="flex items-stretch border border-neutral-300 focus-within:border-neutral-900 focus-within:ring-2 focus-within:ring-neutral-900/15">
-                <input
-                  id="board-code"
-                  name="board-code"
-                  type="text"
-                  inputMode="text"
-                  autoComplete="off"
-                  spellCheck={false}
-                  value={code}
-                  onChange={(event) => {
-                    setCode(event.target.value);
-                    if (joinHint) setJoinHint(false);
-                  }}
-                  placeholder="paste a board code"
-                  aria-describedby={joinHint && !canJoin ? "join-hint" : undefined}
-                  className="w-full bg-transparent px-3 py-2.5 text-sm font-normal text-neutral-900 placeholder:text-neutral-500 focus:outline-none"
-                />
-                <button
-                  type="submit"
-                  disabled={!canJoin}
-                  className="shrink-0 border-l border-neutral-300 px-4 text-sm font-medium text-neutral-700 transition-colors hover:text-neutral-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-900 disabled:cursor-not-allowed disabled:text-neutral-300 motion-reduce:transition-none"
+                <svg
+                  aria-hidden="true"
+                  viewBox="0 0 16 16"
+                  className="h-4 w-4 transition-transform group-hover:rotate-90 motion-reduce:transition-none motion-reduce:group-hover:rotate-0"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
                 >
-                  Join
-                </button>
-              </div>
-              <p
-                id="join-hint"
-                aria-live="polite"
-                className="min-h-[1rem] text-xs font-normal text-neutral-500"
-              >
-                {joinHint && !canJoin ? "Enter a board code to join." : ""}
-              </p>
-            </form>
-          </div>
+                  <path d="M8 3 L8 13 M3 8 L13 8" />
+                </svg>
+                {creating ? "Creating board…" : "New board"}
+              </button>
 
-          {/* Footnote */}
-          <p className="mt-10 text-sm font-normal text-neutral-500">
-            No account needed - pick a name when you arrive.
-          </p>
+              {/* Quieter — join an existing board */}
+              <form
+                onSubmit={handleJoin}
+                noValidate
+                className="flex flex-1 flex-col gap-2 sm:max-w-xs sm:border-l sm:border-neutral-200 sm:pl-8"
+              >
+                <label
+                  htmlFor="board-code"
+                  className="text-sm font-normal text-neutral-500"
+                >
+                  Have a code? Join a board
+                </label>
+                <div className="flex items-stretch border border-neutral-300 focus-within:border-neutral-900 focus-within:ring-2 focus-within:ring-neutral-900/15">
+                  <input
+                    id="board-code"
+                    name="board-code"
+                    type="text"
+                    inputMode="text"
+                    autoComplete="off"
+                    spellCheck={false}
+                    value={code}
+                    onChange={(event) => {
+                      setCode(event.target.value);
+                      if (joinHint) setJoinHint(false);
+                    }}
+                    placeholder="paste a board code"
+                    aria-describedby={joinHint && !canJoin ? "join-hint" : undefined}
+                    className="w-full bg-transparent px-3 py-2.5 text-sm font-normal text-neutral-900 placeholder:text-neutral-500 focus:outline-none"
+                  />
+                  <button
+                    type="submit"
+                    disabled={!canJoin}
+                    className="shrink-0 border-l border-neutral-300 px-4 text-sm font-medium text-neutral-700 transition-colors hover:text-neutral-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-900 disabled:cursor-not-allowed disabled:text-neutral-300 motion-reduce:transition-none"
+                  >
+                    Join
+                  </button>
+                </div>
+                <p
+                  id="join-hint"
+                  aria-live="polite"
+                  className="min-h-[1rem] text-xs font-normal text-neutral-500"
+                >
+                  {joinHint && !canJoin ? "Enter a board code to join." : ""}
+                </p>
+              </form>
+            </div>
+          ) : (
+            <div className="mt-10 flex items-center gap-4">
+              <Link
+                href="/signup"
+                className="inline-flex items-center justify-center bg-neutral-900 px-6 py-3.5 text-base font-medium text-white transition-colors hover:bg-neutral-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-900 motion-reduce:transition-none"
+              >
+                Create an account
+              </Link>
+              <Link
+                href="/login"
+                className="text-base font-medium text-neutral-600 underline underline-offset-4 transition-colors hover:text-neutral-900 motion-reduce:transition-none"
+              >
+                Sign in
+              </Link>
+            </div>
+          )}
         </div>
       </div>
     </main>

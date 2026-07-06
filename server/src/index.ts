@@ -1,17 +1,33 @@
 import "dotenv/config";
 import { createServer } from "http";
 import { Server } from "socket.io";
+import express from "express";
+import cookieParser from "cookie-parser";
+import authRouter from "./routes/auth.js";
 import { connectToDatabase, items, type Id, type Kind } from "./db.js";
 
 const PORT = Number(process.env.PORT) || 4000;
 const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || "http://localhost:3000";
 
-const httpServer = createServer();
+const app = express();
+app.use(express.json());
+app.use(cookieParser());
+app.use((_req, res, next) => {
+  res.setHeader("Access-Control-Allow-Origin", CLIENT_ORIGIN);
+  res.setHeader("Access-Control-Allow-Credentials", "true");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+  next();
+});
+app.use("/auth", authRouter);
+
+const httpServer = createServer(app);
 
 const io = new Server(httpServer, {
   cors: {
     origin: CLIENT_ORIGIN,
     methods: ["GET", "POST"],
+    credentials: true,
   },
 });
 
