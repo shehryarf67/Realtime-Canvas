@@ -5,6 +5,7 @@ import { Rnd } from "react-rnd";
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useSocket } from "@/contexts/SocketContext";
 import type { CanvasMessage, CanvasState } from "@/types/shape";
+import { Circle } from "lucide-react";
 
 type CanvasEditorProps = {
     roomId: string;
@@ -48,6 +49,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour }: C
     const [notes, setNotes] = useState<Note[]>([]);
     const [texts, setTexts] = useState<TextBox[]>([]);
     const [isDraggingItem, setIsDraggingItem] = useState(false);
+    const [selectedTriangleId, setSelectedTriangleId] = useState<string | null>(null);
     const socket = useSocket();
 
     const broadcast = useCallback(
@@ -174,7 +176,10 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour }: C
     }
 
     function handlePointerDown(e: React.PointerEvent<HTMLDivElement>) {
-        if (e.target !== e.currentTarget) return;
+        if (e.target !== e.currentTarget) {
+            return;
+        } 
+        else setSelectedTriangleId(null);
         if (!selectedTool || selectedTool === "select" || selectedTool === "eraser") {
             return;
         }
@@ -398,6 +403,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour }: C
                 p3: shape.p3,
             },
         };
+        setSelectedTriangleId(shape.id);
     }
 
     function handleTriangleVertexPointerDown(
@@ -440,6 +446,43 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour }: C
                     style={getObjectCursorStyle()}
                     onPointerDown={(e) => handleTrianglePointerDown(e, shape)}
                 />
+                {selectedTriangleId === shape.id && (
+                    <>
+                        <circle
+                            cx={shape.p1.x}
+                            cy={shape.p1.y}
+                            r="5"
+                            fill="white"
+                            stroke="black"
+                            strokeWidth="2"
+                            className="pointer-events-auto"
+                            style={getObjectCursorStyle()}
+                            onPointerDown={(e) => handleTriangleVertexPointerDown(e, shape, "p1")}
+                        />
+                        <circle
+                            cx={shape.p2.x}
+                            cy={shape.p2.y}
+                            r="5"
+                            fill="white"
+                            stroke="black"
+                            strokeWidth="2"
+                            className="pointer-events-auto"
+                            style={getObjectCursorStyle()}
+                            onPointerDown={(e) => handleTriangleVertexPointerDown(e, shape, "p2")}
+                        />
+                        <circle
+                            cx={shape.p3.x}
+                            cy={shape.p3.y}
+                            r="5"
+                            fill="white"
+                            stroke="black"
+                            strokeWidth="2"
+                            className="pointer-events-auto"
+                            style={getObjectCursorStyle()}
+                            onPointerDown={(e) => handleTriangleVertexPointerDown(e, shape, "p3")}
+                        />
+                    </>
+                )}
             </svg>
         );
     }

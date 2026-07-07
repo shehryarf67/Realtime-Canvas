@@ -42,7 +42,7 @@ router.post("/signup", async (req, res) => {
     maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days in milliseconds
   });
 
-  res.status(201).json({ email });
+  res.status(201).json({ userId: result.insertedId, email });
 });
 
 router.post("/login", async (req, res) => {
@@ -75,7 +75,7 @@ router.post("/login", async (req, res) => {
     maxAge: 7 * 24 * 60 * 60 * 1000,
   });
 
-  res.status(200).json({ email: user.email });
+  res.status(200).json({ userId: user._id, email: user.email });
 });
 
 router.get("/me", (req, res) => {
