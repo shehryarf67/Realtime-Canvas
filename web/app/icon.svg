@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- Dark background -->
+  <rect width="32" height="32" rx="5" fill="#111111"/>
+  <!-- Cursor 1: blue, upper-left — the classic pointer arrow shape -->
+  <path d="M4 4 L4 15 L7 12.5 L8.5 17 L10.5 16.2 L9 11.5 L13 11.5 Z" fill="#3b82f6"/>
+  <!-- Cursor 2: teal, lower-right — a second user on the same canvas -->
+  <path d="M17 13 L17 24 L20 21.5 L21.5 26 L23.5 25.2 L22 20.5 L26 20.5 Z" fill="#2dd4bf"/>
+</svg>
