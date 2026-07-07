@@ -1,12 +1,14 @@
 "use client";
 import { useRef, useState } from "react";
 import { useParams } from "next/navigation";
+import Link from "next/link";
 import Toolbar from "@/components/Toolbar";
 import CanvasEditor from "@/components/CanvasEditor";
 import type { Tool } from "@/types/shape";
 
 export default function Room() {
   const { roomId } = useParams<{ roomId: string }>();
+  const [copied, setCopied] = useState(false);
 
   const [selectedTool, setSelectedTool] = useState<Tool | null>("select");
   const [selectedColour, setSelectedColour] = useState<string>("#ffffff");
@@ -23,11 +25,33 @@ export default function Room() {
     }
   }
 
+  function handleCopyCode() {
+    navigator.clipboard.writeText(roomId);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
   return <main
     className="flex flex-col p-8 bg-white text-black"
     onPointerDownCapture={handleRootPointerDownCapture}
   >
-    Coboard - A Realtime Collaborative Whiteboard 
+    <div className="flex items-center justify-between mb-4">
+      <Link
+        href="/"
+        className="flex items-center gap-2 text-sm font-medium text-neutral-600 hover:text-neutral-900 transition-colors cursor-pointer motion-reduce:transition-none"
+      >
+        ← Back
+      </Link>
+
+      <button
+        onClick={handleCopyCode}
+        className="flex items-center gap-2 text-sm font-mono text-neutral-600 hover:text-neutral-900 transition-colors cursor-pointer motion-reduce:transition-none"
+      >
+        <span>{roomId}</span>
+        <span className="text-xs text-neutral-400">{copied ? "Copied!" : "Copy"}</span>
+      </button>
+    </div>
+
     <div ref={toolbarRef} className="w-fit self-start">
       <Toolbar selectedTool={selectedTool} onSelectTool={setSelectedTool}
       selectedColour={selectedColour} onSelectedColourChange={setSelectedColour} />

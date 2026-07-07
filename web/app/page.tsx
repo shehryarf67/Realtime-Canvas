@@ -14,6 +14,15 @@ export default function Home() {
   const [creating, setCreating] = useState(false);
   const [joinHint, setJoinHint] = useState(false);
 
+  async function handleLogout() {
+    await fetch(`${process.env.NEXT_PUBLIC_SERVER_URL}/auth/logout`, {
+      method: "POST",
+      credentials: "include",
+    });
+    auth?.setUser(null);
+    router.push("/");
+  }
+
   const trimmed = code.trim();
   const canJoin = trimmed.length > 0;
 
@@ -193,17 +202,30 @@ export default function Home() {
       {/* Foreground — left-aligned column hung off a vertical rule (not a centered card) */}
       <div className="relative z-10 mx-auto flex min-h-screen w-full max-w-6xl items-center px-6 sm:px-10">
         <div className="w-full max-w-2xl border-l border-neutral-200 pl-6 sm:pl-10">
-          {/* Brand lockmark + wordmark */}
-          <div className="flex items-center gap-3">
-            <span
-              aria-hidden="true"
-              className="grid h-8 w-8 place-items-center bg-neutral-900"
-            >
-              <span className="h-3 w-3 bg-[#2563eb]" />
-            </span>
-            <span className="text-lg font-medium tracking-tight text-neutral-900">
-              coboard
-            </span>
+          {/* Brand lockmark + wordmark + user actions */}
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <span
+                aria-hidden="true"
+                className="grid h-8 w-8 place-items-center bg-neutral-900"
+              >
+                <span className="h-3 w-3 bg-[#2563eb]" />
+              </span>
+              <span className="text-lg font-medium tracking-tight text-neutral-900">
+                coboard
+              </span>
+            </div>
+            {auth?.user && (
+              <div className="flex items-center gap-4">
+                <span className="text-sm text-neutral-500">{auth.user.email}</span>
+                <button
+                  onClick={handleLogout}
+                  className="text-sm font-medium text-neutral-600 underline underline-offset-4 transition-colors hover:text-neutral-900 cursor-pointer motion-reduce:transition-none"
+                >
+                  Log out
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Eyebrow + headline + subhead */}
