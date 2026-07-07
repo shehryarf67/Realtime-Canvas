@@ -216,7 +216,7 @@ export default function Home() {
             </div>
             {auth?.user && (
               <div className="flex items-center gap-4">
-                <span className="text-sm text-neutral-500">{auth.user.email}</span>
+                <span className="text-sm text-neutral-500">{auth.user.name}</span>
                 <button
                   onClick={handleLogout}
                   className="text-sm font-medium text-neutral-600 underline underline-offset-4 transition-colors hover:text-neutral-900 cursor-pointer motion-reduce:transition-none"
