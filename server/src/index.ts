@@ -35,6 +35,17 @@ type CanvasMessage =
   | { kind: Kind; action: "add" | "update"; payload: { id: Id } & Record<string, unknown> }
   | { kind: Kind; action: "delete"; id: Id };
 
+io.use((socket, next) => {
+  const userId = socket.handshake.auth.userId;
+
+  if (!userId) {
+    next(new Error("userId is required in auth"));
+    return;
+  }
+  socket.data.userId = userId;
+  next();
+})
+
 io.on("connection", (socket) => {
   console.log(`client connected: ${socket.id}`);
 

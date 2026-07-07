@@ -2,21 +2,27 @@
 
 import { createContext, useContext, ReactNode, useState, useEffect } from "react";
 import { Socket, io } from "socket.io-client";
+import { useAuth } from "@/contexts/AuthContext";
 
 const SocketContext = createContext<Socket | null>(null);
 
 export function SocketProvider({ children }: { children: ReactNode }) {
-  // TODO: open the socket connection and store it in state
   const [socket, setSocket] = useState<Socket | null>(null);
+  const auth = useAuth();
+  const user = auth?.user;
 
   useEffect(() => {
-    const sock = io(process.env.NEXT_PUBLIC_SERVER_URL!);
+    if (!user) return;
+
+    const sock = io(process.env.NEXT_PUBLIC_SERVER_URL!, {
+      auth: { userId: user.userId },
+    });
     setSocket(sock);
 
     return () => {
       sock.disconnect();
     }
-  }, []);
+  }, [user]);
 
   return (
     <SocketContext.Provider value={socket}>
