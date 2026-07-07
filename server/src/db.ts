@@ -15,6 +15,7 @@ export type CanvasItemDoc = {
 
 export type User = {
   _id?: Id;
+  name: string;
   email: string;
   passwordHash: string;
   createdAt: number;

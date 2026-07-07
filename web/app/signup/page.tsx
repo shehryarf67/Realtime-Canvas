@@ -28,7 +28,7 @@ export default function Signup() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ name, email, password }),
     });
 
     const data = await res.json();
@@ -39,7 +39,7 @@ export default function Signup() {
       return;
     }
 
-    auth?.setUser({ userId: data.userId, email: data.email });
+    auth?.setUser({ userId: data.userId, name: data.name, email: data.email });
     router.push("/");
   }
 

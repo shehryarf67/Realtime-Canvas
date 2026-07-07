@@ -9,7 +9,7 @@ const JWT_SECRET = process.env.JWT_SECRET!;
 const SALT_ROUNDS = 10;
 
 router.post("/signup", async (req, res) => {
-  const { email, password } = req.body;
+  const { name, email, password } = req.body;
 
   // Check if user already exists
   const existing = await users().findOne({ email });
@@ -23,14 +23,15 @@ router.post("/signup", async (req, res) => {
 
   // Insert the new user
   const result = await users().insertOne({
+    name,
     email,
     passwordHash,
     createdAt: Date.now(),
   });
 
-  // Sign a JWT with the new user's ID and email
+  // Sign a JWT with the new user's ID, name, and email
   const token = jwt.sign(
-    { userId: result.insertedId, email },
+    { userId: result.insertedId, name, email },
     JWT_SECRET,
     { expiresIn: "7d" }
   );
@@ -42,7 +43,7 @@ router.post("/signup", async (req, res) => {
     maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days in milliseconds
   });
 
-  res.status(201).json({ userId: result.insertedId, email });
+  res.status(201).json({ userId: result.insertedId, name, email });
 });
 
 router.post("/login", async (req, res) => {
@@ -64,7 +65,7 @@ router.post("/login", async (req, res) => {
 
   // Sign a JWT the same way signup does
   const token = jwt.sign(
-    { userId: user._id, email: user.email },
+    { userId: user._id, name: user.name, email: user.email },
     JWT_SECRET,
     { expiresIn: "7d" }
   );
@@ -75,7 +76,7 @@ router.post("/login", async (req, res) => {
     maxAge: 7 * 24 * 60 * 60 * 1000,
   });
 
-  res.status(200).json({ userId: user._id, email: user.email });
+  res.status(200).json({ userId: user._id, name: user.name, email: user.email });
 });
 
 router.get("/me", (req, res) => {
@@ -86,8 +87,8 @@ router.get("/me", (req, res) => {
   }
 
   try {
-    const decoded = jwt.verify(token, JWT_SECRET) as { userId: string; email: string };
-    res.status(200).json({ userId: decoded.userId, email: decoded.email });
+    const decoded = jwt.verify(token, JWT_SECRET) as { userId: string; name: string; email: string };
+    res.status(200).json({ userId: decoded.userId, name: decoded.name, email: decoded.email });
   } catch {
     res.status(401).json({ error: "Invalid or expired token" });
   }

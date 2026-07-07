@@ -4,6 +4,7 @@ import { createContext, useContext, useEffect, useState, ReactNode } from "react
 
 type User = {
   userId: string;
+  name: string;
   email: string;
 };
 

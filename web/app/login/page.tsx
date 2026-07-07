@@ -37,7 +37,7 @@ export default function Login() {
       return;
     }
 
-    auth?.setUser({ userId: data.userId, email: data.email });
+    auth?.setUser({ userId: data.userId, name: data.name, email: data.email });
     router.push("/");
   }
 
