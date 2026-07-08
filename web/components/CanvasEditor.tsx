@@ -46,11 +46,14 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour }: C
         vertex: "p1" | "p2" | "p3";
     } | null>(null);
     const shapesRef = useRef<Shape[]>([]);
+    const lastEmitTimeRef = useRef<number>(0); // Tells when the cursor was last emitted to the server. This is used to throttle the cursor move events.
+    const emitInterval = 30; // milliseconds
     const [notes, setNotes] = useState<Note[]>([]);
     const [texts, setTexts] = useState<TextBox[]>([]);
     const [isDraggingItem, setIsDraggingItem] = useState(false);
     const [selectedTriangleId, setSelectedTriangleId] = useState<string | null>(null);
     const socket = useSocket();
+    const [userMap, setUserMap] = useState<Map<string, { x: number; y: number }>>(new Map());
 
     const broadcast = useCallback(
         (message: CanvasMessage) => {
@@ -121,6 +124,30 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour }: C
         socket.on("canvas-state", handleState);
         return () => {
             socket.off("canvas-state", handleState);
+        };
+    }, [socket]);
+
+    useEffect(() => {
+        if (!socket) return;
+
+        const handleCursorMove = (data: { userId: string; x: number; y: number }) => {
+            setUserMap((prev) => new Map(prev.set(data.userId, { x: data.x, y: data.y })));
+        };
+
+        const handleCursorLeave = (data: { userId: string }) => {
+            setUserMap((prev) => {
+                const newUserMap = new Map(prev);
+                newUserMap.delete(data.userId);
+                return newUserMap;
+            });
+        };
+
+        socket.on("cursor-move", handleCursorMove);
+        socket.on("cursor-leave", handleCursorLeave);
+
+        return () => {
+            socket.off("cursor-move", handleCursorMove);
+            socket.off("cursor-leave", handleCursorLeave);
         };
     }, [socket]);
 
@@ -302,7 +329,13 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour }: C
             );
             return;
         }
-
+        const now = Date.now();
+        if (now - lastEmitTimeRef.current > emitInterval) {
+            const { x, y } = getCanvasPoint(e.clientX, e.clientY);
+            socket?.emit("cursor-move", roomId, { x, y });
+            lastEmitTimeRef.current = now;
+        }
+        
         if (!drawingId.current || !startPoint.current) return;
         const { x: currentX, y: currentY } = getCanvasPoint(e.clientX, e.clientY);
         const start = startPoint.current;

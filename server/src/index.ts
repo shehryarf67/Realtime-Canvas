@@ -49,7 +49,6 @@ io.use((socket, next) => {
 io.on("connection", (socket) => {
   console.log(`client connected: ${socket.id}`);
 
-  // TODO: handle join-room
   socket.on("join-room", async (roomID: string) => {
     socket.join(roomID);
 
@@ -71,7 +70,6 @@ io.on("connection", (socket) => {
     }
   });
 
-  // TODO: handle shape-message
   socket.on("shape-message", async ({ roomId, message }: { roomId: string; message: CanvasMessage }) => {
     try {
       const col = items();
@@ -92,8 +90,15 @@ io.on("connection", (socket) => {
     socket.to(roomId).emit("shape-message", message);
   })
 
+  socket.on("cursor-move", async (roomId: string, cursorData: { x: number; y: number }) => {
+    socket.to(roomId).emit("cursor-move", {userId: socket.data.userId, ...cursorData})
+    // No need of a DB as this is ephemeral
+    // The data of cursor needs to be sent to only other users
+  })
+
   socket.on("disconnect", () => {
     console.log(`client disconnected: ${socket.id}`);
+    socket.to(Array.from(socket.rooms).filter((r) => r !== socket.id)).emit("cursor-leave", { userId: socket.data.userId });
   });
 });
 
