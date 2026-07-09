@@ -86,7 +86,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour }: C
         setFuture([]); // Clear future on new action which invalidates redo history
     }
 
-    const applyMessage = (message: CanvasMessage) => {
+    const applyMessage = useCallback((message: CanvasMessage) => {
         switch (message.kind) {
             case "shape":
                 message.action === "delete"
@@ -104,7 +104,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour }: C
                     : setTexts((prev) => upsert(prev, message.payload));
                 break;
         }
-    }
+    }, []);
 
     const undo = useCallback(() => {
         if (past.length === 0) return;
