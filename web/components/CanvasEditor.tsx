@@ -14,6 +14,11 @@ type CanvasEditorProps = {
     selectedColour: string;
 };
 
+type HistoryEntry = {
+    do: CanvasMessage;
+    undo: CanvasMessage;
+};
+
 function upsert<T extends { id: string | number }>(list: T[], item: T): T[] {
     return list.some((el) => el.id === item.id)
         ? list.map((el) => (el.id === item.id ? item : el))
@@ -54,6 +59,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour }: C
     const triangleVertexDrag = useRef<{
         id: string;
         vertex: "p1" | "p2" | "p3";
+        vertexStart: Point;
     } | null>(null);
     const shapesRef = useRef<Shape[]>([]);
     const lastEmitTimeRef = useRef<number>(0); // Tells when the cursor was last emitted to the server. This is used to throttle the cursor move events.
@@ -65,6 +71,8 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour }: C
     const socket = useSocket();
     const auth = useAuth();
     const [userMap, setUserMap] = useState<Map<string, { x: number; y: number; name: string }>>(new Map());
+    const [past, setPast] = useState<HistoryEntry[]>([]);
+    const [future, setFuture] = useState<HistoryEntry[]>([]);
 
     const broadcast = useCallback(
         (message: CanvasMessage) => {
@@ -72,6 +80,68 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour }: C
         },
         [roomId, socket]
     )
+
+    function pushHistory(doMessage: CanvasMessage, undoMessage: CanvasMessage) {
+        setPast((prev) => [...prev, { do: doMessage, undo: undoMessage }]);
+        setFuture([]); // Clear future on new action which invalidates redo history
+    }
+
+    const applyMessage = (message: CanvasMessage) => {
+        switch (message.kind) {
+            case "shape":
+                message.action === "delete"
+                    ? setShapes((prev) => prev.filter((s) => s.id !== message.id))
+                    : setShapes((prev) => upsert(prev, message.payload));
+                break;
+            case "note":
+                message.action === "delete"
+                    ? setNotes((prev) => prev.filter((s) => s.id !== message.id))
+                    : setNotes((prev) => upsert(prev, message.payload));
+                break;
+            case "text":
+                message.action === "delete"
+                    ? setTexts((prev) => prev.filter((s) => s.id !== message.id))
+                    : setTexts((prev) => upsert(prev, message.payload));
+                break;
+        }
+    }
+
+    const undo = useCallback(() => {
+        if (past.length === 0) return;
+        const lastAction = past[past.length - 1];
+        applyMessage(lastAction.undo);
+        broadcast(lastAction.undo);
+        setPast((prev) => prev.slice(0, -1));
+        setFuture((prev) => [...prev, lastAction]);
+    }, [past, future]);
+
+    const redo = useCallback(() => {
+        if (future.length === 0) return;
+        const nextAction = future[future.length - 1];
+        applyMessage(nextAction.do);
+        broadcast(nextAction.do);
+        setFuture((prev) => prev.slice(0, -1));
+        setPast((prev) => [...prev, nextAction]);
+    }, [future, past]);
+
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (document.activeElement?.tagName === "TEXTAREA") return; // Don't trigger undo/redo when typing in a textarea
+            if (e.ctrlKey && e.key === "z") {
+                e.preventDefault();
+                undo();
+            } else if (e.ctrlKey && e.key === "y") {
+                e.preventDefault();
+                redo();
+            }
+        };
+
+        window.addEventListener("keydown", handleKeyDown);
+
+        return () => {
+            window.removeEventListener("keydown", handleKeyDown);
+        };
+    }, [undo, redo]);
 
     useEffect(() => {
         shapesRef.current = shapes;
@@ -96,23 +166,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour }: C
         if (!socket) return;
 
         const handleMessage = (message: CanvasMessage) => {
-            switch (message.kind) {
-                case "shape":
-                    message.action === "delete"
-                        ? setShapes((prev) => prev.filter((s) => s.id !== message.id))
-                        : setShapes((prev) => upsert(prev, message.payload));
-                    break;
-                case "note":
-                    message.action === "delete"
-                        ? setNotes((prev) => prev.filter((s) => s.id !== message.id))
-                        : setNotes((prev) => upsert(prev, message.payload));
-                    break;
-                case "text":
-                    message.action === "delete"
-                        ? setTexts((prev) => prev.filter((s) => s.id !== message.id))
-                        : setTexts((prev) => upsert(prev, message.payload));
-                    break;
-            }
+            applyMessage(message);
         };
 
         socket.on("shape-message", handleMessage);
@@ -123,7 +177,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour }: C
 
     useEffect(() => {
         if (!socket) return;
-        
+
         // We used the reduce function to handle the edge case where the user enters 
         // the room the split second a change is made, so that all changes are visible
         const handleState = (state: CanvasState) => {
@@ -180,22 +234,24 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour }: C
     }
 
     function deleteShape(id: string) {
+        const deleteMessage: CanvasMessage = { kind: "shape", action: "delete", id };
         setShapes((prev) => prev.filter((shape) => shape.id !== id));
-        // TODO: broadcast delete
-        broadcast({kind:"shape", action:"delete", id})
-        // The parameters inside the function represent CanvasMessage
+        broadcast(deleteMessage);
+        pushHistory(deleteMessage, { kind: "shape", action: "add", payload: shapes.find((s) => s.id === id)! });
     }
 
     function deleteNote(id: number) {
+        const deleteMessage: CanvasMessage = { kind: "note", action: "delete", id };
         setNotes((prev) => prev.filter((note) => note.id !== id));
-        // TODO: broadcast delete
-        broadcast({kind:"note", action:"delete", id})
+        broadcast(deleteMessage);
+        pushHistory(deleteMessage, { kind: "note", action: "add", payload: notes.find((n) => n.id === id)! });
     }
 
     function deleteText(id: string) {
+        const deleteMessage: CanvasMessage = { kind: "text", action: "delete", id };
         setTexts((prev) => prev.filter((text) => text.id !== id));
-        // TODO: broadcast delete
-        broadcast({kind:"text", action:"delete", id})  
+        broadcast(deleteMessage);
+        pushHistory(deleteMessage, { kind: "text", action: "add", payload: texts.find((t) => t.id === id)! });
     }
 
     function getCanvasCursorStyle(): React.CSSProperties {
@@ -216,8 +272,11 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour }: C
     function handlePointerDown(e: React.PointerEvent<HTMLDivElement>) {
         if (e.target !== e.currentTarget) {
             return;
-        } 
-        else setSelectedTriangleId(null);
+        }
+        else {
+            setSelectedTriangleId(null);
+            (document.activeElement as HTMLElement)?.blur(); // Remove focus from any active textarea when clicking on the canvas
+        }
         if (!selectedTool || selectedTool === "select" || selectedTool === "eraser") {
             return;
         }
@@ -234,8 +293,9 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour }: C
             };
             setTexts((prev) => [...prev, newText]);
             // We use the new array due to React's immutability
-            broadcast({kind:"text", action:"add", payload: newText});
-            
+            broadcast({ kind: "text", action: "add", payload: newText });
+            pushHistory({ kind: "text", action: "add", payload: newText }, { kind: "text", action: "delete", id: newText.id });
+
             return;
         }
         if (selectedTool === "note") {
@@ -250,7 +310,8 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour }: C
                 height: 200,
             }
             setNotes((prev) => [...prev, newNote]);
-            broadcast({kind:"note", action:"add", payload: newNote});
+            broadcast({ kind: "note", action: "add", payload: newNote });
+            pushHistory({ kind: "note", action: "add", payload: newNote }, { kind: "note", action: "delete", id: newNote.id });
             return;
         }
         const { x, y } = getCanvasPoint(e.clientX, e.clientY);
@@ -346,7 +407,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour }: C
             socket?.emit("cursor-move", { roomId, x, y, name: auth?.user?.name ?? "Anonymous" });
             lastEmitTimeRef.current = now;
         }
-        
+
         if (!drawingId.current || !startPoint.current) return;
         const { x: currentX, y: currentY } = getCanvasPoint(e.clientX, e.clientY);
         const start = startPoint.current;
@@ -386,21 +447,37 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour }: C
     function handlePointerUp() {
         // TODO: broadcast the finished shape (add or update)
         const wasDrawing = drawingId.current !== null;
-        const moveId = 
+        const moveId =
             drawingId.current ??
             lineDrag.current?.id ??
             triangleDrag.current?.id ??
             triangleVertexDrag.current?.id ??
             null;
-        
+
         if (moveId) {
             const shape = shapesRef.current.find((s) => s.id === moveId);
             if (shape) {
-                broadcast({
+                const doMessage: CanvasMessage = {
                     kind: "shape",
                     action: wasDrawing ? "add" : "update",
                     payload: shape,
-                })
+                };
+                broadcast(doMessage);
+                if (wasDrawing) {
+                    pushHistory(doMessage, { kind: "shape", action: "delete", id: shape.id });
+                }
+                else if (lineDrag.current) {
+                    const restoredShape = { ...shape, ...lineDrag.current.lineStart };
+                    pushHistory(doMessage, { kind: "shape", action: "update", payload: restoredShape });
+                }
+                else if (triangleDrag.current) {
+                    const restoredShape = { ...shape, ...triangleDrag.current.triangleStart };
+                    pushHistory(doMessage, { kind: "shape", action: "update", payload: restoredShape });
+                }
+                else if (triangleVertexDrag.current) {
+                    const restoredShape = { ...shape, [triangleVertexDrag.current.vertex]: triangleVertexDrag.current.vertexStart };
+                    pushHistory(doMessage, { kind: "shape", action: "update", payload: restoredShape });
+                }
             }
         }
 
@@ -459,6 +536,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour }: C
         triangleVertexDrag.current = {
             id: shape.id,
             vertex,
+            vertexStart: shape[vertex],
         };
     }
 
@@ -645,7 +723,9 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour }: C
                             setShapes((prev) =>
                                 prev.map((s) => (s.id === shape.id ? updated : s))
                             );
-                            broadcast({ kind: "shape", action: "update", payload: updated });
+                            const doMessage: CanvasMessage = { kind: "shape", action: "update", payload: updated };
+                            broadcast(doMessage);
+                            pushHistory(doMessage, { kind: "shape", action: "update", payload: shape });
                         }}
                         onResizeStop={(e, direction, ref, delta, position) => {
                             const updated = {
@@ -658,7 +738,9 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour }: C
                             setShapes((prev) =>
                                 prev.map((s) => (s.id === shape.id ? updated : s))
                             );
-                            broadcast({ kind: "shape", action: "update", payload: updated });
+                            const doMessage: CanvasMessage = { kind: "shape", action: "update", payload: updated };
+                            broadcast(doMessage);
+                            pushHistory(doMessage, { kind: "shape", action: "update", payload: shape });
                         }}
                     >
                         <div className="h-full w-full" style={getObjectCursorStyle()}>
@@ -686,7 +768,9 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour }: C
                         setNotes((prev) =>
                             prev.map((n) => (n.id === note.id ? updated : n))
                         );
-                        broadcast({ kind: "note", action: "update", payload: updated });
+                        const doMessage: CanvasMessage = { kind: "note", action: "update", payload: updated };
+                        broadcast(doMessage);
+                        pushHistory(doMessage, { kind: "note", action: "update", payload: note });
                     }}
                 >
                     <div className="h-full w-full" style={getObjectCursorStyle()}>
@@ -713,7 +797,9 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour }: C
                         setTexts((prev) =>
                             prev.map((text) => (text.id === textBox.id ? updated : text))
                         );
-                        broadcast({ kind: "text", action: "update", payload: updated });
+                        const doMessage: CanvasMessage = { kind: "text", action: "update", payload: updated };
+                        broadcast(doMessage);
+                        pushHistory(doMessage, { kind: "text", action: "update", payload: textBox });
                     }}
                     onResizeStop={(e, direction, ref, delta, position) => {
                         const updated = {
@@ -726,7 +812,9 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour }: C
                         setTexts((prev) =>
                             prev.map((text) => (text.id === textBox.id ? updated : text))
                         );
-                        broadcast({ kind: "text", action: "update", payload: updated });
+                        const doMessage: CanvasMessage = { kind: "text", action: "update", payload: updated };
+                        broadcast(doMessage);
+                        pushHistory(doMessage, { kind: "text", action: "update", payload: textBox });
                     }}
                 >
                     <div className="h-full w-full" style={getObjectCursorStyle()}>
