@@ -4,6 +4,7 @@ import type { Tool, Shape, BoxShape, LineShape, TriangleShape, Point, Note, Text
 import { Rnd } from "react-rnd";
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useSocket } from "@/contexts/SocketContext";
+import { useAuth } from "@/contexts/AuthContext";
 import type { CanvasMessage, CanvasState } from "@/types/shape";
 import { Circle } from "lucide-react";
 
@@ -20,10 +21,19 @@ function upsert<T extends { id: string | number }>(list: T[], item: T): T[] {
 }
 
 
+
+
 const ERASER_CURSOR = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='5' fill='white' stroke='black' stroke-width='2'/%3E%3C/svg%3E") 8 8, auto`;
 
 const TEXT_COLOUR = "#000000";
 const NOTE_COLOUR = "#fff9b1";
+
+const CURSOR_COLOURS = ["#14b8a6", "#8b5cf6", "#3b82f6", "#f43f5e", "#f59e0b"];
+
+function getCursorColour(userId: string): string {
+    const sum = userId.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    return CURSOR_COLOURS[sum % CURSOR_COLOURS.length];
+}
 
 export default function CanvasEditor({ roomId, selectedTool, selectedColour }: CanvasEditorProps) {
     const [shapes, setShapes] = useState<Shape[]>([]);
@@ -53,7 +63,8 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour }: C
     const [isDraggingItem, setIsDraggingItem] = useState(false);
     const [selectedTriangleId, setSelectedTriangleId] = useState<string | null>(null);
     const socket = useSocket();
-    const [userMap, setUserMap] = useState<Map<string, { x: number; y: number }>>(new Map());
+    const auth = useAuth();
+    const [userMap, setUserMap] = useState<Map<string, { x: number; y: number; name: string }>>(new Map());
 
     const broadcast = useCallback(
         (message: CanvasMessage) => {
@@ -130,8 +141,8 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour }: C
     useEffect(() => {
         if (!socket) return;
 
-        const handleCursorMove = (data: { userId: string; x: number; y: number }) => {
-            setUserMap((prev) => new Map(prev.set(data.userId, { x: data.x, y: data.y })));
+        const handleCursorMove = (data: { userId: string; x: number; y: number; name: string }) => {
+            setUserMap((prev) => new Map(prev.set(data.userId, { x: data.x, y: data.y, name: data.name })));
         };
 
         const handleCursorLeave = (data: { userId: string }) => {
@@ -332,7 +343,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour }: C
         const now = Date.now();
         if (now - lastEmitTimeRef.current > emitInterval) {
             const { x, y } = getCanvasPoint(e.clientX, e.clientY);
-            socket?.emit("cursor-move", roomId, { x, y });
+            socket?.emit("cursor-move", { roomId, x, y, name: auth?.user?.name ?? "Anonymous" });
             lastEmitTimeRef.current = now;
         }
         
@@ -723,6 +734,38 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour }: C
                     </div>
                 </Rnd>
             ))}
+            {Array.from(userMap.entries()).map(([userId, cursor]) => {
+                const colour = getCursorColour(userId);
+                return (
+                    <div
+                        key={userId}
+                        style={{
+                            position: "absolute",
+                            left: cursor.x,
+                            top: cursor.y,
+                            pointerEvents: "none",
+                        }}
+                    >
+                        <svg
+                            width="16"
+                            height="16"
+                            viewBox="0 0 16 16"
+                            style={{ filter: `drop-shadow(0 0 6px ${colour})` }}
+                        >
+                            <path
+                                d="M1 1 L1 12 L4.2 9 L6.4 14 L8.4 13.1 L6.2 8.2 L11 8 Z"
+                                fill={colour}
+                            />
+                        </svg>
+                        <span
+                            className="ml-3 inline-block px-2 py-0.5 text-[11px] font-medium text-white"
+                            style={{ backgroundColor: colour }}
+                        >
+                            {cursor.name}
+                        </span>
+                    </div>
+                );
+            })}
         </div>
     )
 }

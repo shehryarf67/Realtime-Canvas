@@ -90,8 +90,8 @@ io.on("connection", (socket) => {
     socket.to(roomId).emit("shape-message", message);
   })
 
-  socket.on("cursor-move", async (roomId: string, cursorData: { x: number; y: number }) => {
-    socket.to(roomId).emit("cursor-move", {userId: socket.data.userId, ...cursorData})
+  socket.on("cursor-move", ({ roomId, x, y, name }: { roomId: string; x: number; y: number; name: string }) => {
+    socket.to(roomId).emit("cursor-move", { userId: socket.data.userId, x, y, name });
     // No need of a DB as this is ephemeral
     // The data of cursor needs to be sent to only other users
   })
