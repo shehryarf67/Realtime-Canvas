@@ -27,6 +27,7 @@ export type Board = {
   name: string;
   ownerId: Id;
   createdAt: number;
+  lastEditedAt: number;
 }
 
 const uri = process.env.MONGODB_URI;
@@ -48,7 +49,7 @@ export async function connectToDatabase(): Promise<void> {
   usersCollection = db.collection<User>("users");
   await usersCollection.createIndex({ email: 1 }, { unique: true });
   boardsCollection = db.collection<Board>("boards");
-  await boardsCollection.createIndex({ roomId: 1 });
+  await boardsCollection.createIndex({ roomId: 1 }, { unique: true });
   console.log("connected to MongoDB");
 }
 
