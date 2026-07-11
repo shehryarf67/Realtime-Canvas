@@ -21,6 +21,14 @@ export type User = {
   createdAt: number;
 }
 
+export type Board = {
+  _id?: Id;
+  roomId: string;
+  name: string;
+  ownerId: Id;
+  createdAt: number;
+}
+
 const uri = process.env.MONGODB_URI;
 if (!uri) {
   throw new Error("MONGODB_URI is not set. Add it to server/.env");
@@ -30,6 +38,7 @@ const client = new MongoClient(uri);
 
 let itemsCollection: Collection<CanvasItemDoc> | null = null;
 let usersCollection: Collection<User> | null = null;
+let boardsCollection: Collection<Board> | null = null;
 
 export async function connectToDatabase(): Promise<void> {
   await client.connect();
@@ -38,6 +47,8 @@ export async function connectToDatabase(): Promise<void> {
   await itemsCollection.createIndex({ roomId: 1 });
   usersCollection = db.collection<User>("users");
   await usersCollection.createIndex({ email: 1 }, { unique: true });
+  boardsCollection = db.collection<Board>("boards");
+  await boardsCollection.createIndex({ roomId: 1 });
   console.log("connected to MongoDB");
 }
 
@@ -53,4 +64,11 @@ export function users(): Collection<User> {
     throw new Error("Database not connected. Call connectToDatabase() first.");
   }
   return usersCollection;
+}
+
+export function boards(): Collection<Board> {
+  if (!boardsCollection) {
+    throw new Error("Database not connected. Call connectToDatabase() first.");
+  }
+  return boardsCollection;
 }
