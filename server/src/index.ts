@@ -4,6 +4,7 @@ import { Server } from "socket.io";
 import express from "express";
 import cookieParser from "cookie-parser";
 import authRouter from "./routes/auth.js";
+import boardsRouter from "./routes/boards.js";
 import { connectToDatabase, items, type Id, type Kind } from "./db.js";
 
 const PORT = Number(process.env.PORT) || 4000;
@@ -20,6 +21,7 @@ app.use((_req, res, next) => {
   next();
 });
 app.use("/auth", authRouter);
+app.use("/boards", boardsRouter);
 
 const httpServer = createServer(app);
 

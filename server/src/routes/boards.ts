@@ -37,3 +37,5 @@ router.get("/", requireAuth, async (req, res) => {
 
   res.status(200).json(userBoards);
 });
+
+export default router;
