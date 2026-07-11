@@ -1,4 +1,4 @@
-import {MousePointer2, Square, Triangle, Minus, Type, Circle, StickyNote, Eraser} from "lucide-react"
+import {MousePointer2, Square, Triangle, Minus, Type, Circle, StickyNote, Eraser, Undo2, Redo2} from "lucide-react"
 import type { Tool } from "@/types/shape";
 
 type ToolbarProps = {
@@ -6,6 +6,10 @@ type ToolbarProps = {
   onSelectTool: (tool: Tool | null) => void;
   selectedColour: string;
   onSelectedColourChange: (colour: string) => void;
+  onUndo?: () => void;
+  onRedo?: () => void;
+  canUndo: boolean;
+  canRedo: boolean;
 };
 
 const colours = [
@@ -19,7 +23,7 @@ const colours = [
   "#a855f7",
 ];
 
-export default function Toolbar({ selectedTool, onSelectTool, selectedColour, onSelectedColourChange }: ToolbarProps) {
+export default function Toolbar({ selectedTool, onSelectTool, selectedColour, onSelectedColourChange, onUndo, onRedo, canUndo, canRedo }: ToolbarProps) {
 
     return (
         <div className="inline-flex gap-2">
@@ -80,6 +84,21 @@ export default function Toolbar({ selectedTool, onSelectTool, selectedColour, on
                     onClick={() => onSelectedColourChange(colour)}
                 />
             ))}
+            <div className="mx-1 h-10 w-px bg-gray-300" />
+            <button
+                className="p-2 bg-gray-200 hover:bg-gray-300 text-black rounded border border-transparent disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-gray-200"
+                onClick={onUndo}
+                disabled={!canUndo}
+            >
+                <Undo2 size={18} />
+            </button>
+            <button
+                className="p-2 bg-gray-200 hover:bg-gray-300 text-black rounded border border-transparent disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-gray-200"
+                onClick={onRedo}
+                disabled={!canRedo}
+            >
+                <Redo2 size={18} />
+            </button>
         </div>
     )
 }

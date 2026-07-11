@@ -8,10 +8,18 @@ import { useAuth } from "@/contexts/AuthContext";
 import type { CanvasMessage, CanvasState } from "@/types/shape";
 import { Circle } from "lucide-react";
 
+type HistoryControls = {
+    undo: () => void;
+    redo: () => void;
+    canUndo: boolean;
+    canRedo: boolean;
+};
+
 type CanvasEditorProps = {
     roomId: string;
     selectedTool: Tool | null;
     selectedColour: string;
+    onHistoryChange?: (history: HistoryControls) => void;
 };
 
 type HistoryEntry = {
@@ -40,7 +48,7 @@ function getCursorColour(userId: string): string {
     return CURSOR_COLOURS[sum % CURSOR_COLOURS.length];
 }
 
-export default function CanvasEditor({ roomId, selectedTool, selectedColour }: CanvasEditorProps) {
+export default function CanvasEditor({ roomId, selectedTool, selectedColour, onHistoryChange }: CanvasEditorProps) {
     const [shapes, setShapes] = useState<Shape[]>([]);
     const [isDrawing, setIsDrawing] = useState(false);
     const canvasRef = useRef<HTMLDivElement | null>(null);
@@ -123,6 +131,15 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour }: C
         setFuture((prev) => prev.slice(0, -1));
         setPast((prev) => [...prev, nextAction]);
     }, [future, past]);
+
+    useEffect(() => {
+        onHistoryChange?.({
+            undo,
+            redo,
+            canUndo: past.length > 0,
+            canRedo: future.length > 0,
+        });
+    }, [undo, redo, past.length, future.length, onHistoryChange]);
 
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {

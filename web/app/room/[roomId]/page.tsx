@@ -6,12 +6,20 @@ import Toolbar from "@/components/Toolbar";
 import CanvasEditor from "@/components/CanvasEditor";
 import type { Tool } from "@/types/shape";
 
+type HistoryControls = {
+  undo: () => void;
+  redo: () => void;
+  canUndo: boolean;
+  canRedo: boolean;
+};
+
 export default function Room() {
   const { roomId } = useParams<{ roomId: string }>();
   const [copied, setCopied] = useState(false);
 
   const [selectedTool, setSelectedTool] = useState<Tool | null>("select");
   const [selectedColour, setSelectedColour] = useState<string>("#ffffff");
+  const [history, setHistory] = useState<HistoryControls | null>(null);
   const toolbarRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLDivElement | null>(null);
 
@@ -54,11 +62,13 @@ export default function Room() {
 
     <div ref={toolbarRef} className="w-fit self-start">
       <Toolbar selectedTool={selectedTool} onSelectTool={setSelectedTool}
-      selectedColour={selectedColour} onSelectedColourChange={setSelectedColour} />
+      selectedColour={selectedColour} onSelectedColourChange={setSelectedColour}
+      onUndo={history?.undo} onRedo={history?.redo}
+      canUndo={history?.canUndo ?? false} canRedo={history?.canRedo ?? false} />
     </div>
     <div ref={canvasRef}>
       {/* key={roomId} remounts the editor on room change, so state never leaks between rooms */}
-      <CanvasEditor key={roomId} roomId={roomId} selectedTool={selectedTool} selectedColour={selectedColour} />
+      <CanvasEditor key={roomId} roomId={roomId} selectedTool={selectedTool} selectedColour={selectedColour} onHistoryChange={setHistory} />
     </div>
   </main>;
 }
