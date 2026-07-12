@@ -64,6 +64,13 @@ export async function renameBoard(roomId: string, name: string): Promise<void> {
   );
 }
 
+export async function deleteBoard(roomId: string): Promise<void> {
+  await fetch(
+    `${process.env.NEXT_PUBLIC_SERVER_URL}/boards/${encodeURIComponent(roomId)}`,
+    { method: "DELETE", credentials: "include" }
+  );
+}
+
 export async function getBoardState(roomId: string): Promise<CanvasState | null> {
   const res = await fetch(
     `${process.env.NEXT_PUBLIC_SERVER_URL}/boards/${encodeURIComponent(roomId)}/items`,

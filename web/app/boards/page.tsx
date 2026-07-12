@@ -3,8 +3,9 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { Trash2 } from "lucide-react";
 import { generateRoomCode } from "@/lib/roomCode";
-import { addBoard, getRecentBoards, type Board } from "@/lib/boards";
+import { addBoard, deleteBoard, getRecentBoards, type Board } from "@/lib/boards";
 import { relativeTime } from "@/lib/relativeTime";
 import { useAuth } from "@/contexts/AuthContext";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
@@ -17,6 +18,8 @@ export default function Boards() {
   const [boards, setBoards] = useState<Board[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<Board | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -47,6 +50,15 @@ export default function Boards() {
     } catch {
       setCreating(false);
     }
+  }
+
+  async function handleConfirmDelete() {
+    if (!pendingDelete || deleting) return;
+    setDeleting(true);
+    await deleteBoard(pendingDelete.id);
+    setBoards((prev) => prev.filter((b) => b.id !== pendingDelete.id));
+    setDeleting(false);
+    setPendingDelete(null);
   }
 
   if (!isAuthed) return null;
@@ -123,25 +135,74 @@ export default function Boards() {
         ) : (
           <div className="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {boards.map((board) => (
-              <Link
+              <div
                 key={board.id}
-                href={`/room/${board.id}`}
-                className="group border border-neutral-200 bg-white transition-[border-color,box-shadow] hover:border-neutral-900 hover:shadow-[0_12px_32px_-16px_rgba(23,23,23,0.3)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-900 motion-reduce:transition-none"
+                className="group relative border border-neutral-200 bg-white transition-[border-color,box-shadow] hover:border-neutral-900 hover:shadow-[0_12px_32px_-16px_rgba(23,23,23,0.3)] motion-reduce:transition-none"
               >
-                <div className="aspect-[16/10] overflow-hidden border-b border-neutral-200">
-                  <BoardThumbnail roomId={board.id} />
-                </div>
-                <div className="flex items-baseline justify-between gap-3 px-4 py-3">
-                  <span className="truncate text-sm font-medium">{board.name}</span>
-                  <span className="shrink-0 font-mono text-xs text-neutral-500">
-                    {relativeTime(board.lastEditedAt)}
-                  </span>
-                </div>
-              </Link>
+                <button
+                  type="button"
+                  onClick={() => setPendingDelete(board)}
+                  aria-label={`Delete ${board.name}`}
+                  className="absolute right-2 top-2 z-10 rounded-full bg-white/90 p-2 text-neutral-500 opacity-0 shadow-sm transition-opacity hover:text-red-600 focus-visible:opacity-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-900 group-hover:opacity-100 motion-reduce:transition-none"
+                >
+                  <Trash2 size={16} />
+                </button>
+                <Link
+                  href={`/room/${board.id}`}
+                  className="block focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-900"
+                >
+                  <div className="aspect-[16/10] overflow-hidden border-b border-neutral-200">
+                    <BoardThumbnail roomId={board.id} />
+                  </div>
+                  <div className="flex items-baseline justify-between gap-3 px-4 py-3">
+                    <span className="truncate text-sm font-medium">{board.name}</span>
+                    <span className="shrink-0 font-mono text-xs text-neutral-500">
+                      {relativeTime(board.lastEditedAt)}
+                    </span>
+                  </div>
+                </Link>
+              </div>
             ))}
           </div>
         )}
       </div>
+
+      {/* Delete confirmation */}
+      {pendingDelete && (
+        <div
+          className="fixed inset-0 z-20 grid place-items-center bg-neutral-900/40 px-6"
+          onClick={() => !deleting && setPendingDelete(null)}
+        >
+          <div
+            className="w-full max-w-sm border border-neutral-200 bg-white p-6 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p className="text-base font-medium text-neutral-900">Delete this board?</p>
+            <p className="mt-2 text-sm text-neutral-600">
+              <span className="font-medium">{pendingDelete.name}</span> and everything drawn on it will be
+              permanently deleted. This can&apos;t be undone.
+            </p>
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setPendingDelete(null)}
+                disabled={deleting}
+                className="px-4 py-2 text-sm font-medium text-neutral-600 transition-colors hover:text-neutral-900 disabled:cursor-not-allowed disabled:opacity-60 motion-reduce:transition-none"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDelete}
+                disabled={deleting}
+                className="inline-flex items-center gap-2 bg-red-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60 motion-reduce:transition-none"
+              >
+                {deleting ? "Deleting…" : "Delete board"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

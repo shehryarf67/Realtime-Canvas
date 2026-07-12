@@ -74,6 +74,19 @@ router.patch("/:roomId", requireAuth, async (req, res) => {
   res.status(200).json(result);
 });
 
+// Delete a board and its canvas contents, so nothing is left orphaned
+router.delete("/:roomId", requireAuth, async (req, res) => {
+  const { roomId } = req.params;
+  if (typeof roomId !== "string") {
+    return res.status(400).json({ error: "Invalid roomId" });
+  }
+
+  await boards().deleteOne({ roomId });
+  await items().deleteMany({ roomId });
+
+  res.status(200).json({ ok: true });
+});
+
 // Canvas contents of one room, grouped for thumbnail rendering
 router.get("/:roomId/items", requireAuth, async (req, res) => {
   const { roomId } = req.params;
