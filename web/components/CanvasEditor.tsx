@@ -657,12 +657,14 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
                 }}
                 onChange={(e) => {
                     const value = e.target.value;
+                    const updated = { ...note, text: value };
 
                     setNotes((prev) =>
                         prev.map((n) =>
-                            n.id === note.id ? { ...n, text: value } : n
+                            n.id === note.id ? updated : n
                         )
                     );
+                    broadcast({ kind: "note", action: "update", payload: updated });
                 }}
                 className="h-full w-full cursor-move resize-none p-2 text-sm outline-none focus:cursor-text"
                 style={{
@@ -686,12 +688,14 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
                 }}
                 onChange={(e) => {
                     const value = e.target.value;
+                    const updated = { ...textBox, text: value };
 
                     setTexts((prev) =>
                         prev.map((text) =>
-                            text.id === textBox.id ? { ...text, text: value } : text
+                            text.id === textBox.id ? updated : text
                         )
                     );
+                    broadcast({ kind: "text", action: "update", payload: updated });
                 }}
                 className="h-full w-full cursor-move resize-none bg-transparent p-1 text-base outline-none focus:cursor-text"
                 style={{
