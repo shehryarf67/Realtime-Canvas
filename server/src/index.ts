@@ -17,7 +17,7 @@ app.use((_req, res, next) => {
   res.setHeader("Access-Control-Allow-Origin", CLIENT_ORIGIN);
   res.setHeader("Access-Control-Allow-Credentials", "true");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-  res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+  res.setHeader("Access-Control-Allow-Methods", "GET,POST,PATCH,DELETE,OPTIONS");
   next();
 });
 app.use("/auth", authRouter);
@@ -55,7 +55,7 @@ io.on("connection", (socket) => {
     socket.join(roomID);
 
     try {
-      const docs = await items().find({ roomID }).toArray();
+      const docs = await items().find({ roomId: roomID }).toArray();
       const state: { shapes: unknown[]; notes: unknown[], texts: unknown[] } = {
         shapes: [],
         notes: [],

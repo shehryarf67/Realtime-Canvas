@@ -1,8 +1,4 @@
-// TEMP: localStorage-backed. Swap for API/DB when persistence + auth land.
-// Keep this interface stable.
-//
-// All board data access lives in this file only — nothing else should read or
-// write board storage directly.
+import type { CanvasState } from "@/types/shape";
 
 export type Board = {
   id: string;
@@ -11,40 +7,68 @@ export type Board = {
   lastEditedAt: number;
 };
 
-const STORAGE_KEY = "coboard.recentBoards";
+type ServerBoard = {
+  roomId: string;
+  name: string;
+  ownerId: string;
+  createdAt: number;
+  lastEditedAt: number;
+};
+
+function toBoard(serverBoard: ServerBoard): Board {
+  return {
+    id: serverBoard.roomId,
+    name: serverBoard.name,
+    createdAt: serverBoard.createdAt,
+    lastEditedAt: serverBoard.lastEditedAt,
+  };
+}
 
 export async function addBoard(board: Board): Promise<void> {
-  if (typeof window === "undefined") return;
-  const existing = readBoards().filter((b) => b.id !== board.id);
-  const next = [board, ...existing];
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+  await fetch(`${process.env.NEXT_PUBLIC_SERVER_URL}/boards`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ roomId: board.id, name: board.name }),
+  });
 }
 
-// Exported now for a future /boards screen; Screen A only calls addBoard.
 export async function getRecentBoards(): Promise<Board[]> {
-  if (typeof window === "undefined") return [];
-  return readBoards().sort((a, b) => b.lastEditedAt - a.lastEditedAt);
+  const res = await fetch(`${process.env.NEXT_PUBLIC_SERVER_URL}/boards`, {
+    credentials: "include",
+  });
+  if (!res.ok) return [];
+
+  const serverBoards: ServerBoard[] = await res.json();
+  return serverBoards.map(toBoard);
 }
 
-function readBoards(): Board[] {
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    const parsed: unknown = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter(isBoard);
-  } catch {
-    return [];
-  }
-}
-
-function isBoard(value: unknown): value is Board {
-  if (typeof value !== "object" || value === null) return false;
-  const v = value as Record<string, unknown>;
-  return (
-    typeof v.id === "string" &&
-    typeof v.name === "string" &&
-    typeof v.createdAt === "number" &&
-    typeof v.lastEditedAt === "number"
+export async function getBoard(roomId: string): Promise<Board | null> {
+  const res = await fetch(
+    `${process.env.NEXT_PUBLIC_SERVER_URL}/boards/${encodeURIComponent(roomId)}`,
+    { credentials: "include" }
   );
+  if (!res.ok) return null;
+  return toBoard(await res.json());
+}
+
+export async function renameBoard(roomId: string, name: string): Promise<void> {
+  await fetch(
+    `${process.env.NEXT_PUBLIC_SERVER_URL}/boards/${encodeURIComponent(roomId)}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ name }),
+    }
+  );
+}
+
+export async function getBoardState(roomId: string): Promise<CanvasState | null> {
+  const res = await fetch(
+    `${process.env.NEXT_PUBLIC_SERVER_URL}/boards/${encodeURIComponent(roomId)}/items`,
+    { credentials: "include" }
+  );
+  if (!res.ok) return null;
+  return res.json();
 }

@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { generateRoomCode } from "@/lib/roomCode";
-import { addBoard, type Board } from "@/lib/boards";
+import { addBoard, getRecentBoards, type Board } from "@/lib/boards";
+import { relativeTime } from "@/lib/relativeTime";
 import { useAuth } from "@/contexts/AuthContext";
 
 export default function Home() {
@@ -13,6 +14,15 @@ export default function Home() {
   const [code, setCode] = useState("");
   const [creating, setCreating] = useState(false);
   const [joinHint, setJoinHint] = useState(false);
+  const [boards, setBoards] = useState<Board[]>([]);
+
+  useEffect(() => {
+    if (!auth?.user) {
+      setBoards([]);
+      return;
+    }
+    getRecentBoards().then(setBoards);
+  }, [auth?.user]);
 
   async function handleLogout() {
     await fetch(`${process.env.NEXT_PUBLIC_SERVER_URL}/auth/logout`, {
@@ -34,7 +44,7 @@ export default function Home() {
       const now = Date.now();
       const board: Board = {
         id: roomCode,
-        name: "Untitled board",
+        name: "Untitled Board",
         createdAt: now,
         lastEditedAt: now,
       };
@@ -323,6 +333,40 @@ export default function Home() {
               >
                 Sign in
               </Link>
+            </div>
+          )}
+
+          {/* Recent boards — compact strip; the full gallery lives at /boards */}
+          {auth?.user && boards.length > 0 && (
+            <div className="mt-14">
+              <div className="flex items-baseline justify-between">
+                <p className="font-mono text-xs font-normal tracking-tight text-neutral-500">
+                  Recent boards
+                </p>
+                <Link
+                  href="/boards"
+                  className="text-sm font-medium text-neutral-600 underline underline-offset-4 transition-colors hover:text-neutral-900 motion-reduce:transition-none"
+                >
+                  View all →
+                </Link>
+              </div>
+              <ul className="mt-4 divide-y divide-neutral-200 border-t border-neutral-200">
+                {boards.slice(0, 3).map((board) => (
+                  <li key={board.id}>
+                    <Link
+                      href={`/room/${board.id}`}
+                      className="group flex items-baseline justify-between gap-4 py-3 transition-colors hover:bg-white/60 motion-reduce:transition-none"
+                    >
+                      <span className="truncate text-sm font-medium text-neutral-900 underline-offset-4 group-hover:underline">
+                        {board.name}
+                      </span>
+                      <span className="shrink-0 font-mono text-xs text-neutral-500">
+                        {relativeTime(board.lastEditedAt)}
+                      </span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
         </div>
