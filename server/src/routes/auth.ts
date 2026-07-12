@@ -1,15 +1,36 @@
 import { Router } from "express";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
+import crypto from "crypto";
 import { users } from "../db.js";
+import { isValidEmail, isValidPassword, isNonEmptyString, MIN_PASSWORD_LENGTH } from "../lib/validation.js";
 
 const router = Router();
 
 const JWT_SECRET = process.env.JWT_SECRET!;
 const SALT_ROUNDS = 10;
+const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour
+const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || "http://localhost:3000";
+
+function hashToken(token: string): string {
+  return crypto.createHash("sha256").update(token).digest("hex");
+}
 
 router.post("/signup", async (req, res) => {
   const { name, email, password } = req.body;
+
+  if (!isNonEmptyString(name)) {
+    res.status(400).json({ error: "Name is required" });
+    return;
+  }
+  if (!isValidEmail(email)) {
+    res.status(400).json({ error: "Enter a valid email address" });
+    return;
+  }
+  if (!isValidPassword(password)) {
+    res.status(400).json({ error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters` });
+    return;
+  }
 
   // Check if user already exists
   const existing = await users().findOne({ email });
@@ -96,6 +117,71 @@ router.get("/me", (req, res) => {
 
 router.post("/logout", (_req, res) => {
   res.clearCookie("token");
+  res.status(200).json({ ok: true });
+});
+
+// Dev-mode: no email service is configured yet, so the reset link is returned
+// directly in the response instead of being emailed. Swap this for a real
+// mail provider later without changing the request/response shape below.
+router.post("/forgot-password", async (req, res) => {
+  const { email } = req.body;
+  if (!isValidEmail(email)) {
+    res.status(400).json({ error: "Enter a valid email address" });
+    return;
+  }
+
+  const user = await users().findOne({ email });
+  if (!user) {
+    // Same response whether or not the account exists, so this endpoint
+    // can't be used to discover which emails are registered.
+    res.status(200).json({ ok: true });
+    return;
+  }
+
+  const rawToken = crypto.randomBytes(32).toString("hex");
+  await users().updateOne(
+    { _id: user._id },
+    {
+      $set: {
+        resetTokenHash: hashToken(rawToken),
+        resetTokenExpiresAt: Date.now() + RESET_TOKEN_TTL_MS,
+      },
+    }
+  );
+
+  const resetUrl = `${CLIENT_ORIGIN}/reset-password?token=${rawToken}`;
+  res.status(200).json({ ok: true, resetUrl });
+});
+
+router.post("/reset-password", async (req, res) => {
+  const { token, password } = req.body;
+  if (!isNonEmptyString(token)) {
+    res.status(400).json({ error: "Reset token is required" });
+    return;
+  }
+  if (!isValidPassword(password)) {
+    res.status(400).json({ error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters` });
+    return;
+  }
+
+  const user = await users().findOne({
+    resetTokenHash: hashToken(token),
+    resetTokenExpiresAt: { $gt: Date.now() },
+  });
+  if (!user) {
+    res.status(400).json({ error: "This reset link is invalid or has expired" });
+    return;
+  }
+
+  const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
+  await users().updateOne(
+    { _id: user._id },
+    {
+      $set: { passwordHash },
+      $unset: { resetTokenHash: "", resetTokenExpiresAt: "" },
+    }
+  );
+
   res.status(200).json({ ok: true });
 });
 

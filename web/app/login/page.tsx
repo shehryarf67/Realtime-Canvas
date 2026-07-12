@@ -77,6 +77,13 @@ export default function Login() {
           autoComplete="current-password"
         />
 
+        <Link
+          href="/forgot-password"
+          className="-mt-2 self-end text-sm font-medium text-neutral-600 underline underline-offset-4 transition-colors hover:text-neutral-900 motion-reduce:transition-none"
+        >
+          Forgot password?
+        </Link>
+
         {error && (
           <p className="text-sm text-red-600">{error}</p>
         )}

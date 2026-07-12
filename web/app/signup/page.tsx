@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import AuthScaffold, { AuthField, PasswordField } from "@/components/AuthScaffold";
 import { useAuth } from "@/contexts/AuthContext";
+import { isValidEmail, isValidPassword, MIN_PASSWORD_LENGTH } from "@/lib/validation";
 
 export default function Signup() {
   const [name, setName] = useState("");
@@ -21,8 +22,18 @@ export default function Signup() {
 
   async function handleSubmit(event: SyntheticEvent) {
     event.preventDefault();
-    setIsLoading(true);
     setError(null);
+
+    if (!isValidEmail(email)) {
+      setError("Enter a valid email address");
+      return;
+    }
+    if (!isValidPassword(password)) {
+      setError(`Password must be at least ${MIN_PASSWORD_LENGTH} characters`);
+      return;
+    }
+
+    setIsLoading(true);
 
     const res = await fetch(`${process.env.NEXT_PUBLIC_SERVER_URL}/auth/signup`, {
       method: "POST",

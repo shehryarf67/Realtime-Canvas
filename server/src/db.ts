@@ -19,6 +19,8 @@ export type User = {
   email: string;
   passwordHash: string;
   createdAt: number;
+  resetTokenHash?: string;
+  resetTokenExpiresAt?: number;
 }
 
 export type Board = {
