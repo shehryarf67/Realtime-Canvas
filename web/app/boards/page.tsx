@@ -7,9 +7,11 @@ import { generateRoomCode } from "@/lib/roomCode";
 import { addBoard, getRecentBoards, type Board } from "@/lib/boards";
 import { relativeTime } from "@/lib/relativeTime";
 import { useAuth } from "@/contexts/AuthContext";
+import { useRequireAuth } from "@/hooks/useRequireAuth";
 import BoardThumbnail from "@/components/BoardThumbnail";
 
 export default function Boards() {
+  const isAuthed = useRequireAuth();
   const router = useRouter();
   const auth = useAuth();
   const [boards, setBoards] = useState<Board[]>([]);
@@ -46,6 +48,8 @@ export default function Boards() {
       setCreating(false);
     }
   }
+
+  if (!isAuthed) return null;
 
   return (
     <main className="relative min-h-screen w-full bg-[#f4f6fb] text-neutral-900">

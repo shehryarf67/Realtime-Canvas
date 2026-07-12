@@ -5,6 +5,7 @@ import Link from "next/link";
 import Toolbar from "@/components/Toolbar";
 import CanvasEditor from "@/components/CanvasEditor";
 import { getBoard, renameBoard } from "@/lib/boards";
+import { useRequireAuth } from "@/hooks/useRequireAuth";
 import type { Tool } from "@/types/shape";
 
 type HistoryControls = {
@@ -15,6 +16,7 @@ type HistoryControls = {
 };
 
 export default function Room() {
+  const isAuthed = useRequireAuth();
   const { roomId } = useParams<{ roomId: string }>();
   const [copied, setCopied] = useState(false);
 
@@ -58,6 +60,8 @@ export default function Room() {
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }
+
+  if (!isAuthed) return null;
 
   return <main
     className="flex flex-col p-8 bg-white text-black"
