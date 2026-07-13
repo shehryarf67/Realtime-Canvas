@@ -3,9 +3,9 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Trash2 } from "lucide-react";
+import { Trash2, Pencil } from "lucide-react";
 import { generateRoomCode } from "@/lib/roomCode";
-import { addBoard, deleteBoard, getRecentBoards, type Board } from "@/lib/boards";
+import { addBoard, deleteBoard, renameBoard, getRecentBoards, type Board } from "@/lib/boards";
 import { relativeTime } from "@/lib/relativeTime";
 import { useAuth } from "@/contexts/AuthContext";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
@@ -20,6 +20,8 @@ export default function Boards() {
   const [creating, setCreating] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<Board | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -59,6 +61,21 @@ export default function Boards() {
     setBoards((prev) => prev.filter((b) => b.id !== pendingDelete.id));
     setDeleting(false);
     setPendingDelete(null);
+  }
+
+  function startRename(board: Board) {
+    setRenamingId(board.id);
+    setRenameValue(board.name);
+  }
+
+  async function commitRename(board: Board) {
+    setRenamingId(null);
+    const trimmed = renameValue.trim();
+    const finalName = trimmed.length > 0 ? trimmed : "Untitled Board";
+    if (finalName === board.name) return;
+
+    setBoards((prev) => prev.map((b) => (b.id === board.id ? { ...b, name: finalName } : b)));
+    await renameBoard(board.id, finalName);
   }
 
   if (!isAuthed) return null;
@@ -139,14 +156,24 @@ export default function Boards() {
                 key={board.id}
                 className="group relative border border-neutral-200 bg-white transition-[border-color,box-shadow] hover:border-neutral-900 hover:shadow-[0_12px_32px_-16px_rgba(23,23,23,0.3)] motion-reduce:transition-none"
               >
-                <button
-                  type="button"
-                  onClick={() => setPendingDelete(board)}
-                  aria-label={`Delete ${board.name}`}
-                  className="absolute right-2 top-2 z-10 rounded-full bg-white/90 p-2 text-neutral-500 opacity-0 shadow-sm transition-opacity hover:text-red-600 focus-visible:opacity-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-900 group-hover:opacity-100 motion-reduce:transition-none"
-                >
-                  <Trash2 size={16} />
-                </button>
+                <div className="absolute right-2 top-2 z-10 flex gap-1.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100 motion-reduce:transition-none">
+                  <button
+                    type="button"
+                    onClick={() => startRename(board)}
+                    aria-label={`Rename ${board.name}`}
+                    className="rounded-full bg-white/90 p-2 text-neutral-500 shadow-sm transition-colors hover:text-neutral-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-900 motion-reduce:transition-none"
+                  >
+                    <Pencil size={16} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPendingDelete(board)}
+                    aria-label={`Delete ${board.name}`}
+                    className="rounded-full bg-white/90 p-2 text-neutral-500 shadow-sm transition-colors hover:text-red-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-900 motion-reduce:transition-none"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
                 <Link
                   href={`/room/${board.id}`}
                   className="block focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-900"
@@ -154,13 +181,27 @@ export default function Boards() {
                   <div className="aspect-[16/10] overflow-hidden border-b border-neutral-200">
                     <BoardThumbnail roomId={board.id} />
                   </div>
-                  <div className="flex items-baseline justify-between gap-3 px-4 py-3">
-                    <span className="truncate text-sm font-medium">{board.name}</span>
-                    <span className="shrink-0 font-mono text-xs text-neutral-500">
-                      {relativeTime(board.lastEditedAt)}
-                    </span>
-                  </div>
                 </Link>
+                <div className="flex items-baseline justify-between gap-3 px-4 py-3">
+                  {renamingId === board.id ? (
+                    <input
+                      autoFocus
+                      value={renameValue}
+                      onChange={(e) => setRenameValue(e.target.value)}
+                      onBlur={() => commitRename(board)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") e.currentTarget.blur();
+                        if (e.key === "Escape") setRenamingId(null);
+                      }}
+                      className="w-full border border-neutral-300 bg-neutral-50 px-1.5 py-0.5 text-sm font-medium text-neutral-900 outline-none"
+                    />
+                  ) : (
+                    <span className="truncate text-sm font-medium">{board.name}</span>
+                  )}
+                  <span className="shrink-0 font-mono text-xs text-neutral-500">
+                    {relativeTime(board.lastEditedAt)}
+                  </span>
+                </div>
               </div>
             ))}
           </div>
