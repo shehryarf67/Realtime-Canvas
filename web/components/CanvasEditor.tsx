@@ -6,7 +6,6 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { useSocket } from "@/contexts/SocketContext";
 import { useAuth } from "@/contexts/AuthContext";
 import type { CanvasMessage, CanvasState } from "@/types/shape";
-import { Circle } from "lucide-react";
 
 type HistoryControls = {
     undo: () => void;
@@ -15,11 +14,17 @@ type HistoryControls = {
     canRedo: boolean;
 };
 
+export type PresentUser = {
+    userId: string;
+    name: string;
+};
+
 type CanvasEditorProps = {
     roomId: string;
     selectedTool: Tool | null;
     selectedColour: string;
     onHistoryChange?: (history: HistoryControls) => void;
+    onPresenceChange?: (users: PresentUser[]) => void;
 };
 
 type HistoryEntry = {
@@ -43,12 +48,12 @@ const NOTE_COLOUR = "#fff9b1";
 
 const CURSOR_COLOURS = ["#14b8a6", "#8b5cf6", "#3b82f6", "#f43f5e", "#f59e0b"];
 
-function getCursorColour(userId: string): string {
+export function getCursorColour(userId: string): string {
     const sum = userId.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0);
     return CURSOR_COLOURS[sum % CURSOR_COLOURS.length];
 }
 
-export default function CanvasEditor({ roomId, selectedTool, selectedColour, onHistoryChange }: CanvasEditorProps) {
+export default function CanvasEditor({ roomId, selectedTool, selectedColour, onHistoryChange, onPresenceChange }: CanvasEditorProps) {
     const [shapes, setShapes] = useState<Shape[]>([]);
     const [isDrawing, setIsDrawing] = useState(false);
     const canvasRef = useRef<HTMLDivElement | null>(null);
@@ -79,6 +84,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
     const socket = useSocket();
     const auth = useAuth();
     const [userMap, setUserMap] = useState<Map<string, { x: number; y: number; name: string }>>(new Map());
+    const [presentUsers, setPresentUsers] = useState<Map<string, string>>(new Map());
     const [past, setPast] = useState<HistoryEntry[]>([]);
     const [future, setFuture] = useState<HistoryEntry[]>([]);
 
@@ -232,6 +238,42 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
             socket.off("cursor-leave", handleCursorLeave);
         };
     }, [socket]);
+
+    useEffect(() => {
+        if (!socket) return;
+
+        const handlePresenceState = (users: PresentUser[]) => {
+            setPresentUsers(new Map(users.map((u) => [u.userId, u.name])));
+        };
+
+        const handleUserJoined = (user: PresentUser) => {
+            setPresentUsers((prev) => new Map(prev).set(user.userId, user.name));
+        };
+
+        const handleUserLeft = ({ userId }: { userId: string }) => {
+            setPresentUsers((prev) => {
+                const next = new Map(prev);
+                next.delete(userId);
+                return next;
+            });
+        };
+
+        socket.on("presence-state", handlePresenceState);
+        socket.on("user-joined", handleUserJoined);
+        socket.on("user-left", handleUserLeft);
+
+        return () => {
+            socket.off("presence-state", handlePresenceState);
+            socket.off("user-joined", handleUserJoined);
+            socket.off("user-left", handleUserLeft);
+        };
+    }, [socket]);
+
+    useEffect(() => {
+        onPresenceChange?.(
+            Array.from(presentUsers.entries()).map(([userId, name]) => ({ userId, name }))
+        );
+    }, [presentUsers, onPresenceChange]);
 
     function clamp(value: number, min: number, max: number) {
         return Math.max(min, Math.min(value, max));

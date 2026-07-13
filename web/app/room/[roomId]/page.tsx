@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import Toolbar from "@/components/Toolbar";
-import CanvasEditor from "@/components/CanvasEditor";
+import CanvasEditor, { getCursorColour, type PresentUser } from "@/components/CanvasEditor";
 import { getBoard, renameBoard, joinBoard } from "@/lib/boards";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import type { Tool } from "@/types/shape";
@@ -23,6 +23,7 @@ export default function Room() {
   const [selectedTool, setSelectedTool] = useState<Tool | null>("select");
   const [selectedColour, setSelectedColour] = useState<string>("#ffffff");
   const [history, setHistory] = useState<HistoryControls | null>(null);
+  const [presentUsers, setPresentUsers] = useState<PresentUser[]>([]);
   const [boardName, setBoardName] = useState("Untitled Board");
   const toolbarRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLDivElement | null>(null);
@@ -78,13 +79,30 @@ export default function Room() {
         ← Back
       </Link>
 
-      <button
-        onClick={handleCopyCode}
-        className="flex items-center gap-2 text-sm font-mono text-neutral-600 hover:text-neutral-900 transition-colors cursor-pointer motion-reduce:transition-none"
-      >
-        <span>{roomId}</span>
-        <span className="text-xs text-neutral-400">{copied ? "Copied!" : "Copy"}</span>
-      </button>
+      <div className="flex items-center gap-4">
+        {presentUsers.length > 0 && (
+          <div className="flex items-center -space-x-2">
+            {presentUsers.map((user) => (
+              <div
+                key={user.userId}
+                title={user.name}
+                className="flex h-7 w-7 items-center justify-center rounded-full border-2 border-white text-xs font-medium text-white"
+                style={{ backgroundColor: getCursorColour(user.userId) }}
+              >
+                {user.name.charAt(0).toUpperCase()}
+              </div>
+            ))}
+          </div>
+        )}
+
+        <button
+          onClick={handleCopyCode}
+          className="flex items-center gap-2 text-sm font-mono text-neutral-600 hover:text-neutral-900 transition-colors cursor-pointer motion-reduce:transition-none"
+        >
+          <span>{roomId}</span>
+          <span className="text-xs text-neutral-400">{copied ? "Copied!" : "Copy"}</span>
+        </button>
+      </div>
     </div>
 
     <input
@@ -100,13 +118,13 @@ export default function Room() {
 
     <div ref={toolbarRef} className="w-fit self-start">
       <Toolbar selectedTool={selectedTool} onSelectTool={setSelectedTool}
-      selectedColour={selectedColour} onSelectedColourChange={setSelectedColour}
-      onUndo={history?.undo} onRedo={history?.redo}
-      canUndo={history?.canUndo ?? false} canRedo={history?.canRedo ?? false} />
+        selectedColour={selectedColour} onSelectedColourChange={setSelectedColour}
+        onUndo={history?.undo} onRedo={history?.redo}
+        canUndo={history?.canUndo ?? false} canRedo={history?.canRedo ?? false} />
     </div>
     <div ref={canvasRef}>
       {/* key={roomId} remounts the editor on room change, so state never leaks between rooms */}
-      <CanvasEditor key={roomId} roomId={roomId} selectedTool={selectedTool} selectedColour={selectedColour} onHistoryChange={setHistory} />
+      <CanvasEditor key={roomId} roomId={roomId} selectedTool={selectedTool} selectedColour={selectedColour} onHistoryChange={setHistory} onPresenceChange={setPresentUsers} />
     </div>
   </main>;
 }
