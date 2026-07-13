@@ -26,7 +26,7 @@ const colours = [
 export default function Toolbar({ selectedTool, onSelectTool, selectedColour, onSelectedColourChange, onUndo, onRedo, canUndo, canRedo }: ToolbarProps) {
 
     return (
-        <div className="inline-flex gap-2">
+        <div className="flex flex-wrap items-center gap-2">
             <button 
                 className={`p-2 bg-gray-200 hover:bg-gray-300 text-black rounded border ${selectedTool === "select" ? "ring-2 ring-blue-500 text-white" : "border-transparent"}`}
                 onClick={() => onSelectTool("select")}

@@ -213,7 +213,7 @@ export default function Home() {
       <div className="relative z-10 mx-auto flex min-h-screen w-full max-w-6xl items-center px-6 sm:px-10">
         <div className="w-full max-w-2xl border-l border-neutral-200 pl-6 sm:pl-10">
           {/* Brand lockmark + wordmark + user actions */}
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-3">
               <svg aria-hidden="true" viewBox="0 0 32 32" className="h-8 w-8 shrink-0">
                 <rect width="32" height="32" rx="5" fill="#111111"/>

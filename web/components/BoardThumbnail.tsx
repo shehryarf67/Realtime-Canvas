@@ -4,11 +4,11 @@ import { useEffect, useState } from "react";
 import type { CanvasState, Shape, Note, TextBox } from "@/types/shape";
 import { getBoardState } from "@/lib/boards";
 
-// The live canvas is laid out in absolute pixels; this viewBox approximates a
-// typical canvas area, and SVG scales the whole drawing down to whatever size
-// the card gives it. Nothing here is interactive — it's a picture of the data.
-const VIEW_W = 1200;
-const VIEW_H = 700;
+// Matches the fixed logical canvas space in CanvasEditor (CANVAS_WIDTH/HEIGHT).
+// SVG scales the whole drawing down to whatever size the card gives it.
+// Nothing here is interactive — it's a picture of the data.
+const VIEW_W = 1600;
+const VIEW_H = 900;
 
 function renderShape(shape: Shape) {
     switch (shape.type) {

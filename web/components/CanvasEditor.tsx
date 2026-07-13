@@ -43,6 +43,12 @@ function upsert<T extends { id: string | number }>(list: T[], item: T): T[] {
 
 const ERASER_CURSOR = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='5' fill='white' stroke='black' stroke-width='2'/%3E%3C/svg%3E") 8 8, auto`;
 
+// Every board lives in one fixed logical coordinate space, scaled to fit the
+// viewer's screen. Shapes are stored in these logical pixels, so all users see
+// the same layout regardless of window size.
+export const CANVAS_WIDTH = 1600;
+export const CANVAS_HEIGHT = 900;
+
 const TEXT_COLOUR = "#000000";
 const NOTE_COLOUR = "#fff9b1";
 
@@ -57,6 +63,8 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
     const [shapes, setShapes] = useState<Shape[]>([]);
     const [isDrawing, setIsDrawing] = useState(false);
     const canvasRef = useRef<HTMLDivElement | null>(null);
+    const wrapperRef = useRef<HTMLDivElement | null>(null);
+    const [scale, setScale] = useState(1);
     const drawingId = useRef<string | null>(null);
     const startPoint = useRef<{ x: number; y: number } | null>(null);
     const lineDrag = useRef<{
@@ -169,6 +177,20 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
     useEffect(() => {
         shapesRef.current = shapes;
     }, [shapes]);
+
+    // Keep the canvas scaled to whatever width its container currently has.
+    useEffect(() => {
+        const wrapper = wrapperRef.current;
+        if (!wrapper) return;
+
+        const observer = new ResizeObserver((entries) => {
+            const width = entries[0].contentRect.width;
+            if (width > 0) setScale(width / CANVAS_WIDTH);
+        });
+        observer.observe(wrapper);
+
+        return () => observer.disconnect();
+    }, []);
 
 
     // Joining room effect. Checking if socket connected or not. 
@@ -283,12 +305,13 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
         const rect = canvasRef.current?.getBoundingClientRect();
         if (!rect) return { x: 0, y: 0 };
 
-        const rawX = clientX - rect.left;
-        const rawY = clientY - rect.top;
+        // rect is post-transform, so divide by scale to get logical coordinates
+        const rawX = (clientX - rect.left) / scale;
+        const rawY = (clientY - rect.top) / scale;
 
         return {
-            x: clamp(rawX, 0, rect.width),
-            y: clamp(rawY, 0, rect.height),
+            x: clamp(rawX, 0, CANVAS_WIDTH),
+            y: clamp(rawY, 0, CANVAS_HEIGHT),
         };
     }
 
@@ -404,9 +427,6 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
         }
 
         if (triangleDrag.current) {
-            const rect = canvasRef.current?.getBoundingClientRect();
-            if (!rect) return;
-
             const current = getCanvasPoint(e.clientX, e.clientY);
             const { id, pointerStart, triangleStart } = triangleDrag.current;
             const points = [triangleStart.p1, triangleStart.p2, triangleStart.p3];
@@ -414,8 +434,8 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
             const maxX = Math.max(...points.map((point) => point.x));
             const minY = Math.min(...points.map((point) => point.y));
             const maxY = Math.max(...points.map((point) => point.y));
-            const dx = clamp(current.x - pointerStart.x, -minX, rect.width - maxX);
-            const dy = clamp(current.y - pointerStart.y, -minY, rect.height - maxY);
+            const dx = clamp(current.x - pointerStart.x, -minX, CANVAS_WIDTH - maxX);
+            const dy = clamp(current.y - pointerStart.y, -minY, CANVAS_HEIGHT - maxY);
 
             setShapes((prev) =>
                 prev.map((s) =>
@@ -433,17 +453,14 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
         }
 
         if (lineDrag.current) {
-            const rect = canvasRef.current?.getBoundingClientRect();
-            if (!rect) return;
-
             const current = getCanvasPoint(e.clientX, e.clientY);
             const { id, pointerStart, lineStart } = lineDrag.current;
             const minX = Math.min(lineStart.x1, lineStart.x2);
             const maxX = Math.max(lineStart.x1, lineStart.x2);
             const minY = Math.min(lineStart.y1, lineStart.y2);
             const maxY = Math.max(lineStart.y1, lineStart.y2);
-            const dx = clamp(current.x - pointerStart.x, -minX, rect.width - maxX);
-            const dy = clamp(current.y - pointerStart.y, -minY, rect.height - maxY);
+            const dx = clamp(current.x - pointerStart.x, -minX, CANVAS_WIDTH - maxX);
+            const dy = clamp(current.y - pointerStart.y, -minY, CANVAS_HEIGHT - maxY);
 
             setShapes((prev) =>
                 prev.map((s) =>
@@ -751,13 +768,23 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
 
     return (
         <div
+            ref={wrapperRef}
+            className="mt-4 w-full overflow-hidden border"
+            style={{ aspectRatio: `${CANVAS_WIDTH} / ${CANVAS_HEIGHT}` }}
+        >
+        <div
             ref={canvasRef}
             onPointerDown={handlePointerDown}
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}
             onPointerLeave={handlePointerUp}
-            className="relative mt-4 min-h-[85dvh] w-full border"
-            style={getCanvasCursorStyle()}
+            className="relative origin-top-left"
+            style={{
+                width: CANVAS_WIDTH,
+                height: CANVAS_HEIGHT,
+                transform: `scale(${scale})`,
+                ...getCanvasCursorStyle(),
+            }}
         >
             {shapes.map((shape) => {
                 if (shape.type === "line") {
@@ -773,6 +800,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
                         size={{ width: shape.width, height: shape.height }}
                         position={{ x: shape.x, y: shape.y }}
                         bounds="parent"
+                        scale={scale}
                         disableDragging={isDrawing}
                         enableResizing={!isDrawing}
                         onPointerDown={(e: React.PointerEvent<HTMLElement>) => {
@@ -818,6 +846,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
                     size={{ width: note.width, height: note.height }}
                     position={{ x: note.x, y: note.y }}
                     bounds="parent"
+                    scale={scale}
                     onPointerDown={(e: React.PointerEvent<HTMLElement>) => {
                         if (selectedTool === "eraser") {
                             e.stopPropagation();
@@ -847,6 +876,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
                     size={{ width: textBox.width, height: textBox.height }}
                     position={{ x: textBox.x, y: textBox.y }}
                     bounds="parent"
+                    scale={scale}
                     onPointerDown={(e: React.PointerEvent<HTMLElement>) => {
                         if (selectedTool === "eraser") {
                             e.stopPropagation();
@@ -917,6 +947,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
                     </div>
                 );
             })}
+        </div>
         </div>
     )
 }

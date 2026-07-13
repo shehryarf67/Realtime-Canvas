@@ -68,10 +68,10 @@ export default function Room() {
   if (!isAuthed) return null;
 
   return <main
-    className="flex flex-col p-8 bg-white text-black"
+    className="flex flex-col p-4 sm:p-8 bg-white text-black"
     onPointerDownCapture={handleRootPointerDownCapture}
   >
-    <div className="flex items-center justify-between mb-4">
+    <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
       <Link
         href="/"
         className="flex items-center gap-2 text-sm font-medium text-neutral-600 hover:text-neutral-900 transition-colors cursor-pointer motion-reduce:transition-none"

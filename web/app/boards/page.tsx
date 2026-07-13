@@ -90,7 +90,7 @@ export default function Boards() {
 
       <div className="relative z-10 mx-auto w-full max-w-6xl px-6 py-10 sm:px-10">
         {/* Top bar: back home + brand, create action on the right */}
-        <div className="flex items-center justify-between gap-4">
+        <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-6">
             <Link
               href="/"
@@ -135,7 +135,7 @@ export default function Boards() {
           <div className="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {[0, 1, 2].map((i) => (
               <div key={i} className="border border-neutral-200 bg-white">
-                <div className="aspect-[16/10] animate-pulse bg-neutral-100" />
+                <div className="aspect-video animate-pulse bg-neutral-100" />
                 <div className="px-4 py-3">
                   <div className="h-4 w-2/3 animate-pulse bg-neutral-100" />
                 </div>
@@ -178,7 +178,7 @@ export default function Boards() {
                   href={`/room/${board.id}`}
                   className="block focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-900"
                 >
-                  <div className="aspect-[16/10] overflow-hidden border-b border-neutral-200">
+                  <div className="aspect-video overflow-hidden border-b border-neutral-200">
                     <BoardThumbnail roomId={board.id} />
                   </div>
                 </Link>
