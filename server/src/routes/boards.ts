@@ -61,7 +61,7 @@ router.get("/", requireAuth, async (req, res) => {
   }
 
   const userBoards = await boards()
-    .find({ ownerId })
+    .find({ memberIds: ownerId })
     .sort({ lastEditedAt: -1 })
     .toArray();
 

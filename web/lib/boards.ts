@@ -33,6 +33,13 @@ export async function addBoard(board: Board): Promise<void> {
   });
 }
 
+export async function joinBoard(roomId: string): Promise<void> {
+  await fetch(`${process.env.NEXT_PUBLIC_SERVER_URL}/boards/${encodeURIComponent(roomId)}/join`, {
+    method: "POST",
+    credentials: "include",
+  });
+}
+
 export async function getRecentBoards(): Promise<Board[]> {
   const res = await fetch(`${process.env.NEXT_PUBLIC_SERVER_URL}/boards`, {
     credentials: "include",
