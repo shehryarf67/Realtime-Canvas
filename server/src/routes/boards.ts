@@ -16,11 +16,41 @@ router.post("/", requireAuth, async (req, res) => {
     roomId,
     name,
     ownerId,
+    memberIds: [ownerId],
     createdAt: Date.now(),
     lastEditedAt: Date.now(),
   });
 
   res.status(201).json({ boardId: result.insertedId, roomId, name, ownerId });
+});
+
+router.post("/:roomId/join", requireAuth, async (req, res) => {
+  const { roomId } = req.params;
+  const userId = req.userId;
+  if (typeof roomId !== "string") {
+    return res.status(400).json({ error: "Invalid roomId" });
+  }
+  if (!userId) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+  const result = await boards().findOneAndUpdate(
+    { roomId },
+    {
+      $addToSet: { memberIds: userId },
+      $setOnInsert: {
+        roomId,
+        ownerId: userId,
+        name: "Untitled Board",
+        createdAt: Date.now(),
+        lastEditedAt: Date.now(),
+      },
+    },
+    { upsert: true, returnDocument: "after" }
+  );
+  if (!result) {
+    return res.status(404).json({ error: "Board not found" });
+  }
+  res.status(200).json(result);
 });
 
 // List the current user's boards, most recently edited first

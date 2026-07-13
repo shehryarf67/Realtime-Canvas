@@ -28,6 +28,7 @@ export type Board = {
   roomId: string;
   name: string;
   ownerId: Id;
+  memberIds: Id[];
   createdAt: number;
   lastEditedAt: number;
 }
