@@ -6,7 +6,7 @@ import cookieParser from "cookie-parser";
 import jwt from "jsonwebtoken";
 import authRouter from "./routes/auth.js";
 import boardsRouter from "./routes/boards.js";
-import { connectToDatabase, items, type Id, type Kind } from "./db.js";
+import { boards, connectToDatabase, items, type Id, type Kind } from "./db.js";
 
 const PORT = Number(process.env.PORT) || 4000;
 const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || "http://localhost:3000";
@@ -132,6 +132,11 @@ io.on("connection", (socket) => {
           {upsert: true}
         )
       }
+
+      await boards().updateOne(
+        { roomId },
+        { $set: { lastEditedAt: Date.now() } }
+      );
     } catch (err) {
       console.error("Failed to handle shape message:", err);
     }
