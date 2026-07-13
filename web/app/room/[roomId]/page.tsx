@@ -6,6 +6,7 @@ import Toolbar from "@/components/Toolbar";
 import CanvasEditor, { getCursorColour, type PresentUser } from "@/components/CanvasEditor";
 import { getBoard, renameBoard, joinBoard } from "@/lib/boards";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
+import { useSocket } from "@/contexts/SocketContext";
 import type { Tool } from "@/types/shape";
 
 type HistoryControls = {
@@ -17,6 +18,7 @@ type HistoryControls = {
 
 export default function Room() {
   const isAuthed = useRequireAuth();
+  const { isConnected } = useSocket();
   const { roomId } = useParams<{ roomId: string }>();
   const [copied, setCopied] = useState(false);
 
@@ -92,6 +94,13 @@ export default function Room() {
                 {user.name.charAt(0).toUpperCase()}
               </div>
             ))}
+          </div>
+        )}
+
+        {!isConnected && (
+          <div className="flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700">
+            <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+            Reconnecting…
           </div>
         )}
 

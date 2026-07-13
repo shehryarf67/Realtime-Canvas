@@ -89,7 +89,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
     const [texts, setTexts] = useState<TextBox[]>([]);
     const [isDraggingItem, setIsDraggingItem] = useState(false);
     const [selectedTriangleId, setSelectedTriangleId] = useState<string | null>(null);
-    const socket = useSocket();
+    const { socket } = useSocket();
     const auth = useAuth();
     const [userMap, setUserMap] = useState<Map<string, { x: number; y: number; name: string }>>(new Map());
     const [presentUsers, setPresentUsers] = useState<Map<string, string>>(new Map());
