@@ -4,6 +4,7 @@ import jwt from "jsonwebtoken";
 import crypto from "crypto";
 import { users } from "../db.js";
 import { isValidEmail, isValidPassword, isNonEmptyString, MIN_PASSWORD_LENGTH } from "../lib/validation.js";
+import { sendPasswordResetEmail } from "../lib/mailer.js";
 
 const router = Router();
 
@@ -120,9 +121,6 @@ router.post("/logout", (_req, res) => {
   res.status(200).json({ ok: true });
 });
 
-// Dev-mode: no email service is configured yet, so the reset link is returned
-// directly in the response instead of being emailed. Swap this for a real
-// mail provider later without changing the request/response shape below.
 router.post("/forgot-password", async (req, res) => {
   const { email } = req.body;
   if (!isValidEmail(email)) {
@@ -150,7 +148,15 @@ router.post("/forgot-password", async (req, res) => {
   );
 
   const resetUrl = `${CLIENT_ORIGIN}/reset-password?token=${rawToken}`;
-  res.status(200).json({ ok: true, resetUrl });
+  try {
+    await sendPasswordResetEmail(user.email, resetUrl);
+  } catch (err) {
+    console.error("Failed to send password reset email:", err);
+    res.status(500).json({ error: "Could not send the reset email. Try again later." });
+    return;
+  }
+
+  res.status(200).json({ ok: true });
 });
 
 router.post("/reset-password", async (req, res) => {
