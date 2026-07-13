@@ -4,7 +4,7 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import Toolbar from "@/components/Toolbar";
 import CanvasEditor from "@/components/CanvasEditor";
-import { getBoard, renameBoard } from "@/lib/boards";
+import { getBoard, renameBoard, joinBoard } from "@/lib/boards";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import type { Tool } from "@/types/shape";
 
@@ -32,6 +32,9 @@ export default function Room() {
     getBoard(roomId).then((board) => {
       if (cancelled || !board) return;
       setBoardName(board.name);
+    });
+    joinBoard(roomId).catch((err) => {
+      console.error("Failed to join board:", err);
     });
     return () => {
       cancelled = true;

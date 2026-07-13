@@ -1,15 +1,15 @@
-import {Router} from "express";
-import {boards, items} from "../db.js";
+import { Router } from "express";
+import { boards, items } from "../db.js";
 import requireAuth from "../middleware/requireAuth.js";
 
 const router = Router();
 
 // Create a new board
 router.post("/", requireAuth, async (req, res) => {
-  const {roomId, name} = req.body;
+  const { roomId, name } = req.body;
   const ownerId = req.userId;
   if (!ownerId) {
-    return res.status(401).json({error: "Unauthorized"});
+    return res.status(401).json({ error: "Unauthorized" });
   }
 
   const result = await boards().insertOne({
