@@ -77,10 +77,30 @@ io.on("connection", (socket) => {
   console.log(`client connected: ${socket.id}`);
 
   socket.on("join-room", async (roomID: string) => {
-    socket.join(roomID);
-
     const userId = socket.data.userId as string;
     const name = socket.data.name as string;
+
+    if (typeof roomID !== "string") {
+      socket.emit("room-error", { message: "Invalid board" });
+      return;
+    }
+
+    try {
+      const board = await boards().findOne({ roomId: roomID, memberIds: userId });
+      if (!board) {
+        socket.emit("room-error", { message: "Board not found or access denied" });
+        return;
+      }
+    } catch (err) {
+      console.error("Failed to authorize room join:", err);
+      socket.emit("room-error", { message: "Unable to join board" });
+      return;
+    }
+
+    await socket.join(roomID);
+    const authorizedRooms = (socket.data.authorizedRooms as Set<string> | undefined) ?? new Set<string>();
+    authorizedRooms.add(roomID);
+    socket.data.authorizedRooms = authorizedRooms;
 
     let presence = roomPresence.get(roomID);
     if (!presence) {
@@ -120,6 +140,9 @@ io.on("connection", (socket) => {
   });
 
   socket.on("shape-message", async ({ roomId, message }: { roomId: string; message: CanvasMessage }) => {
+    const authorizedRooms = socket.data.authorizedRooms as Set<string> | undefined;
+    if (!authorizedRooms?.has(roomId)) return;
+
     try {
       const col = items();
       if (message.action === "delete"){
@@ -145,6 +168,9 @@ io.on("connection", (socket) => {
   })
 
   socket.on("cursor-move", ({ roomId, x, y, name }: { roomId: string; x: number; y: number; name: string }) => {
+    const authorizedRooms = socket.data.authorizedRooms as Set<string> | undefined;
+    if (!authorizedRooms?.has(roomId)) return;
+
     socket.to(roomId).emit("cursor-move", { userId: socket.data.userId, x, y, name });
     // No need of a DB as this is ephemeral
     // The data of cursor needs to be sent to only other users

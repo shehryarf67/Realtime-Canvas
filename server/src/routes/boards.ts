@@ -37,15 +37,8 @@ router.post("/:roomId/join", requireAuth, async (req, res) => {
     { roomId },
     {
       $addToSet: { memberIds: userId },
-      $setOnInsert: {
-        roomId,
-        ownerId: userId,
-        name: "Untitled Board",
-        createdAt: Date.now(),
-        lastEditedAt: Date.now(),
-      },
     },
-    { upsert: true, returnDocument: "after" }
+    { returnDocument: "after" }
   );
   if (!result) {
     return res.status(404).json({ error: "Board not found" });

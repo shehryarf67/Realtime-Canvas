@@ -4,7 +4,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { generateRoomCode } from "@/lib/roomCode";
-import { addBoard, getRecentBoards, type Board } from "@/lib/boards";
+import { addBoard, getRecentBoards, joinBoard, type Board } from "@/lib/boards";
 import { relativeTime } from "@/lib/relativeTime";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -13,7 +13,9 @@ export default function Home() {
   const auth = useAuth();
   const [code, setCode] = useState("");
   const [creating, setCreating] = useState(false);
+  const [joining, setJoining] = useState(false);
   const [joinHint, setJoinHint] = useState(false);
+  const [joinError, setJoinError] = useState<string | null>(null);
   const [boards, setBoards] = useState<Board[]>([]);
 
   useEffect(() => {
@@ -56,13 +58,27 @@ export default function Home() {
     }
   }
 
-  function handleJoin(event: FormEvent<HTMLFormElement>) {
+  async function handleJoin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!canJoin) {
       setJoinHint(true);
       return;
     }
-    router.push(`/room/${encodeURIComponent(trimmed)}`);
+
+    setJoining(true);
+    setJoinError(null);
+    try {
+      const board = await joinBoard(trimmed);
+      if (!board) {
+        setJoinError("No board exists with that code.");
+        return;
+      }
+      router.push(`/room/${encodeURIComponent(trimmed)}`);
+    } catch {
+      setJoinError("Couldn't join this board. Please try again.");
+    } finally {
+      setJoining(false);
+    }
   }
 
   return (
@@ -297,17 +313,18 @@ export default function Home() {
                     onChange={(event) => {
                       setCode(event.target.value);
                       if (joinHint) setJoinHint(false);
+                      if (joinError) setJoinError(null);
                     }}
                     placeholder="paste a board code"
-                    aria-describedby={joinHint && !canJoin ? "join-hint" : undefined}
+                    aria-describedby={joinHint || joinError ? "join-hint" : undefined}
                     className="w-full bg-transparent px-3 py-2.5 text-sm font-normal text-neutral-900 placeholder:text-neutral-500 focus:outline-none"
                   />
                   <button
                     type="submit"
-                    disabled={!canJoin}
+                    disabled={!canJoin || joining}
                     className="shrink-0 border-l border-neutral-300 px-4 text-sm font-medium text-neutral-700 transition-colors hover:text-neutral-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-900 disabled:cursor-not-allowed disabled:text-neutral-300 motion-reduce:transition-none"
                   >
-                    Join
+                    {joining ? "Joiningâ€¦" : "Join"}
                   </button>
                 </div>
                 <p
@@ -315,7 +332,7 @@ export default function Home() {
                   aria-live="polite"
                   className="min-h-[1rem] text-xs font-normal text-neutral-500"
                 >
-                  {joinHint && !canJoin ? "Enter a board code to join." : ""}
+                  {joinHint && !canJoin ? "Enter a board code to join." : joinError ?? ""}
                 </p>
               </form>
             </div>

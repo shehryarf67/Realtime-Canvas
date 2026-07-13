@@ -4,7 +4,7 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import Toolbar from "@/components/Toolbar";
 import CanvasEditor, { getCursorColour, type PresentUser } from "@/components/CanvasEditor";
-import { getBoard, renameBoard, joinBoard } from "@/lib/boards";
+import { renameBoard, joinBoard } from "@/lib/boards";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { useSocket } from "@/contexts/SocketContext";
 import type { Tool } from "@/types/shape";
@@ -21,6 +21,7 @@ export default function Room() {
   const { isConnected } = useSocket();
   const { roomId } = useParams<{ roomId: string }>();
   const [copied, setCopied] = useState(false);
+  const [roomStatus, setRoomStatus] = useState<"loading" | "ready" | "not-found" | "error">("loading");
 
   const [selectedTool, setSelectedTool] = useState<Tool | null>("select");
   const [selectedColour, setSelectedColour] = useState<string>("#ffffff");
@@ -32,13 +33,21 @@ export default function Room() {
 
   useEffect(() => {
     let cancelled = false;
-    getBoard(roomId).then((board) => {
-      if (cancelled || !board) return;
-      setBoardName(board.name);
-    });
-    joinBoard(roomId).catch((err) => {
-      console.error("Failed to join board:", err);
-    });
+    setRoomStatus("loading");
+    joinBoard(roomId)
+      .then((board) => {
+        if (cancelled) return;
+        if (!board) {
+          setRoomStatus("not-found");
+          return;
+        }
+        setBoardName(board.name);
+        setRoomStatus("ready");
+      })
+      .catch((err) => {
+        console.error("Failed to join board:", err);
+        if (!cancelled) setRoomStatus("error");
+      });
     return () => {
       cancelled = true;
     };
@@ -67,7 +76,27 @@ export default function Room() {
     setTimeout(() => setCopied(false), 2000);
   }
 
-  if (!isAuthed) return null;
+  if (!isAuthed || roomStatus === "loading") return null;
+
+  if (roomStatus !== "ready") {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-white px-6 text-black">
+        <div className="text-center">
+          <h1 className="text-2xl font-medium">
+            {roomStatus === "not-found" ? "Board not found" : "Couldn't open this board"}
+          </h1>
+          <p className="mt-2 text-sm text-neutral-500">
+            {roomStatus === "not-found"
+              ? "Check the board code and try again."
+              : "Please try again in a moment."}
+          </p>
+          <Link href="/" className="mt-5 inline-block text-sm font-medium underline underline-offset-4">
+            Back to boards
+          </Link>
+        </div>
+      </main>
+    );
+  }
 
   return <main
     className="flex flex-col p-4 sm:p-8 bg-white text-black"

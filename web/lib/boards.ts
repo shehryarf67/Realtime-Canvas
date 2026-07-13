@@ -33,11 +33,14 @@ export async function addBoard(board: Board): Promise<void> {
   });
 }
 
-export async function joinBoard(roomId: string): Promise<void> {
-  await fetch(`${process.env.NEXT_PUBLIC_SERVER_URL}/boards/${encodeURIComponent(roomId)}/join`, {
+export async function joinBoard(roomId: string): Promise<Board | null> {
+  const res = await fetch(`${process.env.NEXT_PUBLIC_SERVER_URL}/boards/${encodeURIComponent(roomId)}/join`, {
     method: "POST",
     credentials: "include",
   });
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error("Failed to join board");
+  return toBoard(await res.json());
 }
 
 export async function getRecentBoards(): Promise<Board[]> {
