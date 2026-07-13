@@ -31,11 +31,20 @@ function ResetPasswordForm() {
     }
 
     setIsLoading(true);
-    const res = await fetch(`${process.env.NEXT_PUBLIC_SERVER_URL}/auth/reset-password`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token, password }),
-    });
+
+    let res: Response;
+    try {
+      res = await fetch(`${process.env.NEXT_PUBLIC_SERVER_URL}/auth/reset-password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token, password }),
+      });
+    } catch {
+      setError("Can't reach the server right now. Please try again.");
+      setIsLoading(false);
+      return;
+    }
+
     const data = await res.json();
     setIsLoading(false);
 

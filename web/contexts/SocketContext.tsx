@@ -20,11 +20,11 @@ export function SocketProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!user) return;
 
+    // Identity is derived server-side from the JWT cookie (see io.use() on
+    // the server) — withCredentials makes sure that cookie actually rides
+    // along with the handshake.
     const sock = io(process.env.NEXT_PUBLIC_SERVER_URL!, {
-      auth: {
-        userId: user.userId,
-        name: user.name
-       },
+      withCredentials: true,
     });
 
     sock.on("connect", () => setIsConnected(true));

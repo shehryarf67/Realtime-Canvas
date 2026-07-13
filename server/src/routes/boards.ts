@@ -104,11 +104,22 @@ router.patch("/:roomId", requireAuth, async (req, res) => {
   res.status(200).json(result);
 });
 
-// Delete a board and its canvas contents, so nothing is left orphaned
+// Delete a board and its canvas contents, so nothing is left orphaned.
+// Only the board's owner can do this — any other member can collaborate on
+// the canvas, but shouldn't be able to remove it entirely.
 router.delete("/:roomId", requireAuth, async (req, res) => {
   const { roomId } = req.params;
-  if (typeof roomId !== "string") {
-    return res.status(400).json({ error: "Invalid roomId" });
+  const userId = req.userId;
+  if (typeof roomId !== "string" || !userId) {
+    return res.status(400).json({ error: "Invalid request" });
+  }
+
+  const board = await boards().findOne({ roomId });
+  if (!board) {
+    return res.status(404).json({ error: "Board not found" });
+  }
+  if (board.ownerId !== userId) {
+    return res.status(403).json({ error: "Only the board owner can delete it" });
   }
 
   await boards().deleteOne({ roomId });

@@ -20,11 +20,20 @@ export default function ForgotPassword() {
     }
 
     setIsLoading(true);
-    const res = await fetch(`${process.env.NEXT_PUBLIC_SERVER_URL}/auth/forgot-password`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email }),
-    });
+
+    let res: Response;
+    try {
+      res = await fetch(`${process.env.NEXT_PUBLIC_SERVER_URL}/auth/forgot-password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+    } catch {
+      setError("Can't reach the server right now. Please try again.");
+      setIsLoading(false);
+      return;
+    }
+
     const data = await res.json();
     setIsLoading(false);
 

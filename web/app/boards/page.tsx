@@ -22,6 +22,7 @@ export default function Boards() {
   const [deleting, setDeleting] = useState(false);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -57,9 +58,17 @@ export default function Boards() {
   async function handleConfirmDelete() {
     if (!pendingDelete || deleting) return;
     setDeleting(true);
-    await deleteBoard(pendingDelete.id);
-    setBoards((prev) => prev.filter((b) => b.id !== pendingDelete.id));
+    setDeleteError(null);
+
+    const ok = await deleteBoard(pendingDelete.id);
     setDeleting(false);
+
+    if (!ok) {
+      setDeleteError("Couldn't delete this board. You may not be its owner.");
+      return;
+    }
+
+    setBoards((prev) => prev.filter((b) => b.id !== pendingDelete.id));
     setPendingDelete(null);
   }
 
@@ -167,7 +176,10 @@ export default function Boards() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => setPendingDelete(board)}
+                    onClick={() => {
+                      setPendingDelete(board);
+                      setDeleteError(null);
+                    }}
                     aria-label={`Delete ${board.name}`}
                     className="rounded-full bg-white/90 p-2 text-neutral-500 shadow-sm transition-colors hover:text-red-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-900 motion-reduce:transition-none"
                   >
@@ -212,7 +224,11 @@ export default function Boards() {
       {pendingDelete && (
         <div
           className="fixed inset-0 z-20 grid place-items-center bg-neutral-900/40 px-6"
-          onClick={() => !deleting && setPendingDelete(null)}
+          onClick={() => {
+            if (deleting) return;
+            setPendingDelete(null);
+            setDeleteError(null);
+          }}
         >
           <div
             className="w-full max-w-sm border border-neutral-200 bg-white p-6 shadow-xl"
@@ -223,10 +239,16 @@ export default function Boards() {
               <span className="font-medium">{pendingDelete.name}</span> and everything drawn on it will be
               permanently deleted. This can&apos;t be undone.
             </p>
+            {deleteError && (
+              <p className="mt-3 text-sm text-red-600">{deleteError}</p>
+            )}
             <div className="mt-6 flex justify-end gap-3">
               <button
                 type="button"
-                onClick={() => setPendingDelete(null)}
+                onClick={() => {
+                  setPendingDelete(null);
+                  setDeleteError(null);
+                }}
                 disabled={deleting}
                 className="px-4 py-2 text-sm font-medium text-neutral-600 transition-colors hover:text-neutral-900 disabled:cursor-not-allowed disabled:opacity-60 motion-reduce:transition-none"
               >

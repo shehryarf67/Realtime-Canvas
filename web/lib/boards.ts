@@ -71,11 +71,12 @@ export async function renameBoard(roomId: string, name: string): Promise<void> {
   );
 }
 
-export async function deleteBoard(roomId: string): Promise<void> {
-  await fetch(
+export async function deleteBoard(roomId: string): Promise<boolean> {
+  const res = await fetch(
     `${process.env.NEXT_PUBLIC_SERVER_URL}/boards/${encodeURIComponent(roomId)}`,
     { method: "DELETE", credentials: "include" }
   );
+  return res.ok;
 }
 
 export async function getBoardState(roomId: string): Promise<CanvasState | null> {

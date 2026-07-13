@@ -22,12 +22,19 @@ export default function Login() {
     setIsLoading(true);
     setError(null);
 
-    const res = await fetch(`${process.env.NEXT_PUBLIC_SERVER_URL}/auth/login`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({ email, password }),
-    });
+    let res: Response;
+    try {
+      res = await fetch(`${process.env.NEXT_PUBLIC_SERVER_URL}/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ email, password }),
+      });
+    } catch {
+      setError("Can't reach the server right now. Please try again.");
+      setIsLoading(false);
+      return;
+    }
 
     const data = await res.json();
 

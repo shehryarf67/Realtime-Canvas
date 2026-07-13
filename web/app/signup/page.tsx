@@ -35,12 +35,19 @@ export default function Signup() {
 
     setIsLoading(true);
 
-    const res = await fetch(`${process.env.NEXT_PUBLIC_SERVER_URL}/auth/signup`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({ name, email, password }),
-    });
+    let res: Response;
+    try {
+      res = await fetch(`${process.env.NEXT_PUBLIC_SERVER_URL}/auth/signup`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ name, email, password }),
+      });
+    } catch {
+      setError("Can't reach the server right now. Please try again.");
+      setIsLoading(false);
+      return;
+    }
 
     const data = await res.json();
 

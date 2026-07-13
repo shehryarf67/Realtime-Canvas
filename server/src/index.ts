@@ -3,12 +3,26 @@ import { createServer } from "http";
 import { Server } from "socket.io";
 import express from "express";
 import cookieParser from "cookie-parser";
+import jwt from "jsonwebtoken";
 import authRouter from "./routes/auth.js";
 import boardsRouter from "./routes/boards.js";
 import { connectToDatabase, items, type Id, type Kind } from "./db.js";
 
 const PORT = Number(process.env.PORT) || 4000;
 const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || "http://localhost:3000";
+const JWT_SECRET = process.env.JWT_SECRET!;
+
+// Socket.IO's handshake never passes through Express's cookie-parser
+// middleware, so the "token" cookie has to be pulled out of the raw
+// Cookie header by hand.
+function readCookie(cookieHeader: string | undefined, name: string): string | undefined {
+  if (!cookieHeader) return undefined;
+  const match = cookieHeader
+    .split(";")
+    .map((c) => c.trim())
+    .find((c) => c.startsWith(`${name}=`));
+  return match ? decodeURIComponent(match.slice(name.length + 1)) : undefined;
+}
 
 const app = express();
 app.use(express.json());
@@ -38,15 +52,20 @@ type CanvasMessage =
   | { kind: Kind; action: "delete"; id: Id };
 
 io.use((socket, next) => {
-  const userId = socket.handshake.auth.userId;
-
-  if (!userId) {
-    next(new Error("userId is required in auth"));
+  const token = readCookie(socket.handshake.headers.cookie, "token");
+  if (!token) {
+    next(new Error("Authentication required"));
     return;
   }
-  socket.data.userId = userId;
-  socket.data.name = socket.handshake.auth.name;
-  next();
+
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET) as { userId: string; name: string };
+    socket.data.userId = decoded.userId;
+    socket.data.name = decoded.name;
+    next();
+  } catch {
+    next(new Error("Invalid or expired token"));
+  }
 })
 
 // roomId -> userId -> how many open sockets that user currently has in the
