@@ -45,14 +45,42 @@ io.use((socket, next) => {
     return;
   }
   socket.data.userId = userId;
+  socket.data.name = socket.handshake.auth.name;
   next();
 })
+
+// roomId -> userId -> how many open sockets that user currently has in the
+// room. A user open in two tabs should only ever produce one user-joined and
+// one user-left broadcast, not one per socket.
+const roomPresence = new Map<string, Map<string, { name: string; count: number }>>();
 
 io.on("connection", (socket) => {
   console.log(`client connected: ${socket.id}`);
 
   socket.on("join-room", async (roomID: string) => {
     socket.join(roomID);
+
+    const userId = socket.data.userId as string;
+    const name = socket.data.name as string;
+
+    let presence = roomPresence.get(roomID);
+    if (!presence) {
+      presence = new Map();
+      roomPresence.set(roomID, presence);
+    }
+
+    const existing = presence.get(userId);
+    if (existing) {
+      existing.count += 1;
+    } else {
+      presence.set(userId, { name, count: 1 });
+      socket.to(roomID).emit("user-joined", { userId, name });
+    }
+
+    const presentUsers = Array.from(presence.entries())
+      .filter(([id]) => id !== userId)
+      .map(([id, info]) => ({ userId: id, name: info.name }));
+    socket.emit("presence-state", presentUsers);
 
     try {
       const docs = await items().find({ roomId: roomID }).toArray();
@@ -100,7 +128,22 @@ io.on("connection", (socket) => {
 
   socket.on("disconnect", () => {
     console.log(`client disconnected: ${socket.id}`);
-    socket.to(Array.from(socket.rooms).filter((r) => r !== socket.id)).emit("cursor-leave", { userId: socket.data.userId });
+    const userId = socket.data.userId as string;
+    const rooms = Array.from(socket.rooms).filter((r) => r !== socket.id);
+
+    for (const roomID of rooms) {
+      const presence = roomPresence.get(roomID);
+      const entry = presence?.get(userId);
+      if (!presence || !entry) continue;
+
+      entry.count -= 1;
+      if (entry.count <= 0) {
+        presence.delete(userId);
+        socket.to(roomID).emit("user-left", { userId });
+      }
+    }
+
+    socket.to(rooms).emit("cursor-leave", { userId });
   });
 });
 

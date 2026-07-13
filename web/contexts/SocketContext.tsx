@@ -15,7 +15,10 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     if (!user) return;
 
     const sock = io(process.env.NEXT_PUBLIC_SERVER_URL!, {
-      auth: { userId: user.userId },
+      auth: { 
+        userId: user.userId,
+        name: user.name
+       },
     });
     setSocket(sock);
 
