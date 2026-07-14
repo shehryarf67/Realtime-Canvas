@@ -413,6 +413,15 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
             pushHistory({ kind: "note", action: "add", payload: newNote }, { kind: "note", action: "delete", id: newNote.id });
             return;
         }
+        if (selectedTool === "pen") {
+            const { x, y } = getCanvasPoint(e.clientX, e.clientY);
+            const id = crypto.randomUUID();
+            const newShape: Shape = { id, type: "pen", points: [{ x, y }], colour: selectedColour };
+            setShapes((prev) => [...prev, newShape]);
+            drawingId.current = id;
+            setIsDrawing(true);
+            return;
+        }
         const { x, y } = getCanvasPoint(e.clientX, e.clientY);
         const id = crypto.randomUUID();
 
