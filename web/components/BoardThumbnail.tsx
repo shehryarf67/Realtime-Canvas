@@ -60,6 +60,18 @@ function renderShape(shape: Shape) {
                     strokeWidth={2}
                 />
             );
+        case "pen":
+            return (
+                <polyline
+                    key={shape.id}
+                    points={shape.points.map((p) => `${p.x},${p.y}`).join(" ")}
+                    fill="none"
+                    stroke={shape.colour}
+                    strokeWidth={2}
+                />
+            );
+        default:
+            return null;
     }
 }
 
