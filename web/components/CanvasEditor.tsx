@@ -416,11 +416,13 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
         const { x, y } = getCanvasPoint(e.clientX, e.clientY);
         const id = crypto.randomUUID();
 
-        const newShape: Shape = selectedTool === "line"
-            ? { id, type: "line", x1: x, y1: y, x2: x, y2: y, colour: selectedColour }
-            : selectedTool === "triangle"
-                ? { id, type: "triangle", p1: { x, y }, p2: { x, y }, p3: { x, y }, colour: selectedColour }
-                : { id, type: selectedTool, x, y, width: 0, height: 0, colour: selectedColour };
+        const newShape: Shape = (
+            selectedTool === "line"
+                ? { id, type: "line", x1: x, y1: y, x2: x, y2: y, colour: selectedColour }
+                : selectedTool === "triangle"
+                    ? { id, type: "triangle", p1: { x, y }, p2: { x, y }, p3: { x, y }, colour: selectedColour }
+                    : { id, type: selectedTool as any, x, y, width: 0, height: 0, colour: selectedColour }
+        ) as Shape;
 
         setShapes((prev) => [...prev, newShape]);
         drawingId.current = id;
@@ -509,7 +511,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
                 if (s.id !== drawingId.current) return s;
 
                 if (s.type === "line") {
-                    return { ...s, x2: currentX, y2: currentY };
+                    return { ...s, x2: currentX, y2: currentY } as Shape;
                 }
 
                 if (s.type === "triangle") {
@@ -523,7 +525,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
                         p1: { x: left + (right - left) / 2, y: top },
                         p2: { x: left, y: bottom },
                         p3: { x: right, y: bottom },
-                    };
+                    } as Shape;
                 }
 
                 return {
@@ -532,7 +534,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
                     y: Math.min(start.y, currentY),
                     width: Math.abs(currentX - start.x),
                     height: Math.abs(currentY - start.y),
-                };
+                } as Shape;
             })
         );
     }
@@ -809,6 +811,11 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
                 }
                 if (shape.type === "triangle") {
                     return renderTriangleShape(shape);
+                }
+
+                // Only render draggable/resizable boxes for shapes that have width/height
+                if (!("width" in shape && "height" in shape)) {
+                    return null;
                 }
 
                 return (

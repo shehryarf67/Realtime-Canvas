@@ -6,7 +6,8 @@ export type Tool =
   | "line"
   | "text"
   | "note"
-  | "eraser";
+  | "eraser"
+  | "pen";
 
 type BoxShapeBase = {
   id: string;
@@ -51,7 +52,9 @@ export type LineShape = {
   colour: string;
 };
 
-export type Shape = BoxShape | TriangleShape | LineShape;
+export type PenShape = { id: string; type: "pen"; points: Point[]; colour: string }
+
+export type Shape = BoxShape | TriangleShape | LineShape | PenShape;
 
 export interface Note {
   id: number,
@@ -80,9 +83,13 @@ export type CanvasMessage =
   | { kind: "note"; action: "delete"; id: number }
   | { kind: "text"; action: "add" | "update"; payload: TextBox }
   | { kind: "text"; action: "delete"; id: string }
+  | { kind: "shape"; action: "add" | "update"; payload: PenShape }
+  | { kind: "shape"; action: "delete"; id: string }
 
 export type CanvasState = {
   shapes: Shape[];
   notes: Note[];
   texts: TextBox[];
 };
+
+
