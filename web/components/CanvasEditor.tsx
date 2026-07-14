@@ -25,6 +25,7 @@ type CanvasEditorProps = {
     selectedColour: string;
     onHistoryChange?: (history: HistoryControls) => void;
     onPresenceChange?: (users: PresentUser[]) => void;
+    onBoardDeleted?: () => void;
 };
 
 type HistoryEntry = {
@@ -59,7 +60,7 @@ export function getCursorColour(userId: string): string {
     return CURSOR_COLOURS[sum % CURSOR_COLOURS.length];
 }
 
-export default function CanvasEditor({ roomId, selectedTool, selectedColour, onHistoryChange, onPresenceChange }: CanvasEditorProps) {
+export default function CanvasEditor({ roomId, selectedTool, selectedColour, onHistoryChange, onPresenceChange, onBoardDeleted }: CanvasEditorProps) {
     const [shapes, setShapes] = useState<Shape[]>([]);
     const [isDrawing, setIsDrawing] = useState(false);
     const canvasRef = useRef<HTMLDivElement | null>(null);
@@ -95,9 +96,11 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
     const [presentUsers, setPresentUsers] = useState<Map<string, string>>(new Map());
     const [past, setPast] = useState<HistoryEntry[]>([]);
     const [future, setFuture] = useState<HistoryEntry[]>([]);
+    const isDeletedRef = useRef(false);
 
     const broadcast = useCallback(
         (message: CanvasMessage) => {
+            if (isDeletedRef.current) return;
             socket?.emit("shape-message", { roomId, message });
         },
         [roomId, socket]
@@ -296,6 +299,20 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
             Array.from(presentUsers.entries()).map(([userId, name]) => ({ userId, name }))
         );
     }, [presentUsers, onPresenceChange]);
+
+    useEffect(() => {
+        if (!socket) return;
+
+        const handleBoardDeleted = () => {
+            isDeletedRef.current = true;
+            onBoardDeleted?.();
+        };
+
+        socket.on("board-deleted", handleBoardDeleted);
+        return () => {
+            socket.off("board-deleted", handleBoardDeleted);
+        };
+    }, [socket, onBoardDeleted]);
 
     function clamp(value: number, min: number, max: number) {
         return Math.max(min, Math.min(value, max));

@@ -21,7 +21,7 @@ export default function Room() {
   const { isConnected } = useSocket();
   const { roomId } = useParams<{ roomId: string }>();
   const [copied, setCopied] = useState(false);
-  const [roomStatus, setRoomStatus] = useState<"loading" | "ready" | "not-found" | "error">("loading");
+  const [roomStatus, setRoomStatus] = useState<"loading" | "ready" | "not-found" | "error" | "deleted">("loading");
 
   const [selectedTool, setSelectedTool] = useState<Tool | null>("select");
   const [selectedColour, setSelectedColour] = useState<string>("#ffffff");
@@ -83,12 +83,18 @@ export default function Room() {
       <main className="flex min-h-screen items-center justify-center bg-white px-6 text-black">
         <div className="text-center">
           <h1 className="text-2xl font-medium">
-            {roomStatus === "not-found" ? "Board not found" : "Couldn't open this board"}
+            {roomStatus === "not-found"
+              ? "Board not found"
+              : roomStatus === "deleted"
+                ? "This board was deleted"
+                : "Couldn't open this board"}
           </h1>
           <p className="mt-2 text-sm text-neutral-500">
             {roomStatus === "not-found"
               ? "Check the board code and try again."
-              : "Please try again in a moment."}
+              : roomStatus === "deleted"
+                ? "The owner deleted this board. Your work here is no longer available."
+                : "Please try again in a moment."}
           </p>
           <Link href="/" className="mt-5 inline-block text-sm font-medium underline underline-offset-4">
             Back to boards
@@ -162,7 +168,7 @@ export default function Room() {
     </div>
     <div ref={canvasRef}>
       {/* key={roomId} remounts the editor on room change, so state never leaks between rooms */}
-      <CanvasEditor key={roomId} roomId={roomId} selectedTool={selectedTool} selectedColour={selectedColour} onHistoryChange={setHistory} onPresenceChange={setPresentUsers} />
+      <CanvasEditor key={roomId} roomId={roomId} selectedTool={selectedTool} selectedColour={selectedColour} onHistoryChange={setHistory} onPresenceChange={setPresentUsers} onBoardDeleted={() => setRoomStatus("deleted")} />
     </div>
   </main>;
 }

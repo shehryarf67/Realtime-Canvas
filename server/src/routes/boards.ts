@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { boards, items } from "../db.js";
 import requireAuth from "../middleware/requireAuth.js";
+import { notifyBoardDeleted } from "../socket.js";
 
 const router = Router();
 
@@ -117,6 +118,7 @@ router.delete("/:roomId", requireAuth, async (req, res) => {
 
   await boards().deleteOne({ roomId });
   await items().deleteMany({ roomId });
+  notifyBoardDeleted(roomId);
 
   res.status(200).json({ ok: true });
 });
