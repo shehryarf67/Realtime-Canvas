@@ -52,6 +52,12 @@ export default function Toolbar({ selectedTool, onSelectTool, selectedColour, on
                 <Triangle size={18} />
             </button>
             <button
+                className={`p-2 bg-gray-200 hover:bg-gray-300 text-black rounded border ${selectedTool === "pen" ? "ring-2 ring-blue-500 text-white" : "border-transparent"}`}
+                onClick={() => onSelectTool("pen")}
+            >
+                <Pen size={18} />
+            </button>
+            <button
                 className={`p-2 bg-gray-200 hover:bg-gray-300 text-black rounded border ${selectedTool === "line" ? "ring-2 ring-blue-500 text-white" : "border-transparent"}`}
                 onClick={() => onSelectTool("line")}
             >
@@ -74,12 +80,6 @@ export default function Toolbar({ selectedTool, onSelectTool, selectedColour, on
                 onClick={() => onSelectTool("eraser")}
             >
                 <Eraser size={18} />
-            </button>
-            <button
-                className={`p-2 bg-gray-200 hover:bg-gray-300 text-black rounded border ${selectedTool === "pen" ? "ring-2 ring-blue-500 text-white" : "border-transparent"}`}
-                onClick={() => onSelectTool("pen")}
-            >
-                <Pen size={18} />
             </button>
             <div className="mx-1 h-10 w-px bg-gray-300" />
             {colours.map((colour) => (

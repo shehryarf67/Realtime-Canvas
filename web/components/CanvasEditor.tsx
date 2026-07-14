@@ -1,6 +1,6 @@
 "use client";
 
-import type { Tool, Shape, BoxShape, LineShape, TriangleShape, Point, Note, TextBox } from "@/types/shape";
+import type { Tool, Shape, BoxShape, LineShape, TriangleShape, PenShape, Point, Note, TextBox } from "@/types/shape";
 import { Rnd } from "react-rnd";
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useSocket } from "@/contexts/SocketContext";
@@ -82,6 +82,11 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
         id: string;
         vertex: "p1" | "p2" | "p3";
         vertexStart: Point;
+    } | null>(null);
+    const penDrag = useRef<{
+        id: string;
+        pointerStart: { x: number; y: number };
+        pointsStart: Point[];
     } | null>(null);
     const shapesRef = useRef<Shape[]>([]);
     const lastEmitTimeRef = useRef<number>(0); // Tells when the cursor was last emitted to the server. This is used to throttle the cursor move events.
@@ -419,6 +424,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
             const newShape: Shape = { id, type: "pen", points: [{ x, y }], colour: selectedColour };
             setShapes((prev) => [...prev, newShape]);
             drawingId.current = id;
+            startPoint.current = { x, y };
             setIsDrawing(true);
             return;
         }
@@ -448,7 +454,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
                 prev.map((s) =>
                     s.id === id && s.type === "triangle"
                         ? { ...s, [vertex]: current }
-                        : s
+                        : s 
                 )
             );
             return;
@@ -505,6 +511,25 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
             );
             return;
         }
+        if (penDrag.current) {
+            const current = getCanvasPoint(e.clientX, e.clientY);
+            const { id, pointerStart, pointsStart } = penDrag.current;
+            const minX = Math.min(...pointsStart.map((p) => p.x));
+            const maxX = Math.max(...pointsStart.map((p) => p.x));
+            const minY = Math.min(...pointsStart.map((p) => p.y));
+            const maxY = Math.max(...pointsStart.map((p) => p.y));
+            const dx = clamp(current.x - pointerStart.x, -minX, CANVAS_WIDTH - maxX);
+            const dy = clamp(current.y - pointerStart.y, -minY, CANVAS_HEIGHT - maxY);
+
+            setShapes((prev) =>
+                prev.map((s) =>
+                    s.id === id && s.type === "pen"
+                        ? { ...s, points: pointsStart.map((p) => ({ x: p.x + dx, y: p.y + dy })) }
+                        : s
+                )
+            );
+            return;
+        }
         const now = Date.now();
         if (now - lastEmitTimeRef.current > emitInterval) {
             const { x, y } = getCanvasPoint(e.clientX, e.clientY);
@@ -536,6 +561,10 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
                         p3: { x: right, y: bottom },
                     } as Shape;
                 }
+                
+                if (s.type === "pen") {
+                    return { ...s, points: [...s.points, { x: currentX, y: currentY }] } as Shape;
+                }
 
                 return {
                     ...s,
@@ -556,6 +585,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
             lineDrag.current?.id ??
             triangleDrag.current?.id ??
             triangleVertexDrag.current?.id ??
+            penDrag.current?.id ??
             null;
 
         if (moveId) {
@@ -582,6 +612,10 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
                     const restoredShape = { ...shape, [triangleVertexDrag.current.vertex]: triangleVertexDrag.current.vertexStart };
                     pushHistory(doMessage, { kind: "shape", action: "update", payload: restoredShape });
                 }
+                else if (penDrag.current) {
+                    const restoredShape = { ...shape, points: penDrag.current.pointsStart };
+                    pushHistory(doMessage, { kind: "shape", action: "update", payload: restoredShape });
+                }
             }
         }
 
@@ -590,6 +624,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
         lineDrag.current = null;
         triangleDrag.current = null;
         triangleVertexDrag.current = null;
+        penDrag.current = null;
         setIsDrawing(false);
     }
 
@@ -629,6 +664,20 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
             },
         };
         setSelectedTriangleId(shape.id);
+    }
+
+    function handlePenPointerDown(e: React.PointerEvent<SVGPathElement>, shape: PenShape) {
+        e.stopPropagation();
+        if (selectedTool === "eraser") {
+            deleteShape(shape.id);
+            return;
+        }
+
+        penDrag.current = {
+            id: shape.id,
+            pointerStart: getCanvasPoint(e.clientX, e.clientY),
+            pointsStart: shape.points,
+        };
     }
 
     function handleTriangleVertexPointerDown(
@@ -794,6 +843,25 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
         );
     }
 
+    function renderPenShape(shape: PenShape) {
+        return (
+            <svg key={shape.id} className="pointer-events-none absolute inset-0 h-full w-full overflow-visible">
+                <polyline
+                    points={shape.points.map((p) => `${p.x},${p.y}`).join(" ")}
+                    fill="none"
+                    stroke={shape.colour}
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    vectorEffect="non-scaling-stroke"
+                    className="pointer-events-auto"
+                    style={getObjectCursorStyle()}
+                    onPointerDown={(e) => handlePenPointerDown(e, shape)}
+                />
+            </svg>
+        )
+    }
+
     return (
         <div
             ref={wrapperRef}
@@ -820,6 +888,9 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
                 }
                 if (shape.type === "triangle") {
                     return renderTriangleShape(shape);
+                }
+                if (shape.type === "pen") {
+                    return renderPenShape(shape);
                 }
 
                 // Only render draggable/resizable boxes for shapes that have width/height
