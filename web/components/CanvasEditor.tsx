@@ -39,6 +39,38 @@ function upsert<T extends { id: string | number }>(list: T[], item: T): T[] {
         : [...list, item];
 }
 
+type Bounds = { minX: number; minY: number; maxX: number; maxY: number };
+
+// Bounding box for any selectable item — used by the marquee-select
+// intersection test. Squares, circles, notes, and text boxes all share the
+// same x/y/width/height shape, so one fallback branch covers all three.
+function getBounds(item: Shape | Note | TextBox): Bounds {
+    if ("points" in item) { // For pen strokes
+        const xs = item.points.map((p) => p.x);
+        const ys = item.points.map((p) => p.y);
+        return { minX: Math.min(...xs), minY: Math.min(...ys), maxX: Math.max(...xs), maxY: Math.max(...ys) };
+    }
+    if ("x1" in item) { // For lines
+        return {
+            minX: Math.min(item.x1, item.x2),
+            minY: Math.min(item.y1, item.y2),
+            maxX: Math.max(item.x1, item.x2),
+            maxY: Math.max(item.y1, item.y2),
+        };
+    }
+    if ("p1" in item) { // For triangles
+        const xs = [item.p1.x, item.p2.x, item.p3.x];
+        const ys = [item.p1.y, item.p2.y, item.p3.y];
+        return { minX: Math.min(...xs), minY: Math.min(...ys), maxX: Math.max(...xs), maxY: Math.max(...ys) };
+    }
+    return { // Normal shapes (Squares, Circles, Notes)
+        minX: item.x,
+        minY: item.y,
+        maxX: item.x + item.width,
+        maxY: item.y + item.height,
+    };
+}
+
 
 
 
@@ -95,6 +127,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
     const [texts, setTexts] = useState<TextBox[]>([]);
     const [isDraggingItem, setIsDraggingItem] = useState(false);
     const [selectedTriangleId, setSelectedTriangleId] = useState<string | null>(null);
+    const [selectedIds, setSelectedIds] = useState<Set<string | number>>(new Set());
     const { socket } = useSocket();
     const auth = useAuth();
     const [userMap, setUserMap] = useState<Map<string, { x: number; y: number; name: string }>>(new Map());
