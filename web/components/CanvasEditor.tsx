@@ -888,7 +888,11 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
         };
     }
 
-    function handleTrianglePointerDown(e: React.PointerEvent<SVGPolygonElement>, shape: TriangleShape) {
+    // Widened to SVGElement (not SVGPolygonElement) since this is also
+    // called from the invisible drag hit-area rect, not just the filled
+    // triangle itself — the rect covers the bounding-box corners outside
+    // the triangle's own fill.
+    function handleTrianglePointerDown(e: React.PointerEvent<SVGElement>, shape: TriangleShape) {
         e.stopPropagation();
         if (selectedTool === "eraser") {
             deleteShape(shape.id);
@@ -1001,6 +1005,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
 
         return (
             <svg key={shape.id} className="pointer-events-none absolute inset-0 h-full w-full overflow-visible">
+                {renderDragHitArea(getBounds(shape), (e) => handleTrianglePointerDown(e, shape))}
                 <polygon
                     points={points}
                     fill={shape.colour}
