@@ -252,6 +252,44 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
         setSelectedIds(newSelectedIds);
     }
 
+    function deleteSelection() {
+        if (selectedIds.size === 0) return;
+
+        const doMessages: CanvasMessage[] = [];
+        const undoMessages: CanvasMessage[] = [];
+
+        const shapesToDelete = shapes.filter((s) => selectedIds.has(s.id));
+        const notesToDelete = notes.filter((n) => selectedIds.has(n.id));
+        const textsToDelete = texts.filter((t) => selectedIds.has(t.id));
+
+        if (shapesToDelete.length > 0) {
+            setShapes((prev) => prev.filter((s) => !selectedIds.has(s.id)));
+            shapesToDelete.forEach((s) => {
+                doMessages.push({ kind: "shape", action: "delete", id: s.id });
+                undoMessages.push({ kind: "shape", action: "add", payload: s });
+            });
+        }
+        if (notesToDelete.length > 0) {
+            setNotes((prev) => prev.filter((n) => !selectedIds.has(n.id)));
+            notesToDelete.forEach((n) => {
+                doMessages.push({ kind: "note", action: "delete", id: n.id });
+                undoMessages.push({ kind: "note", action: "add", payload: n });
+            });
+        }
+        if (textsToDelete.length > 0) {
+            setTexts((prev) => prev.filter((t) => !selectedIds.has(t.id)));
+            textsToDelete.forEach((t) => {
+                doMessages.push({ kind: "text", action: "delete", id: t.id });
+                undoMessages.push({ kind: "text", action: "add", payload: t });
+            });
+        }
+
+        if (doMessages.length === 0) return;
+        doMessages.forEach((m) => broadcast(m));
+        pushHistory(doMessages, undoMessages);
+        setSelectedIds(new Set());
+    }
+
     const applyMessage = useCallback((message: CanvasMessage) => {
         switch (message.kind) {
             case "shape":
@@ -322,6 +360,9 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
             } else if (e.ctrlKey && e.key === "c") {
                 e.preventDefault();
                 copySelection();
+            } else if (e.key === "Delete" || e.key === "Backspace") {
+                e.preventDefault();
+                deleteSelection();
             }
         };
 
@@ -330,7 +371,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
         return () => {
             window.removeEventListener("keydown", handleKeyDown);
         };
-    }, [undo, redo, pasteClipboard, copySelection]);
+    }, [undo, redo, pasteClipboard, copySelection, deleteSelection]);
 
     useEffect(() => {
         shapesRef.current = shapes;
