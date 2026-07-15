@@ -128,6 +128,8 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
     const [isDraggingItem, setIsDraggingItem] = useState(false);
     const [selectedTriangleId, setSelectedTriangleId] = useState<string | null>(null);
     const [selectedIds, setSelectedIds] = useState<Set<string | number>>(new Set());
+    const marqueeStart = useRef<Point | null>(null);
+    const [marqueeRect, setMarqueeRect] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
     const { socket } = useSocket();
     const auth = useAuth();
     const [userMap, setUserMap] = useState<Map<string, { x: number; y: number; name: string }>>(new Map());
@@ -414,7 +416,13 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
             setSelectedTriangleId(null);
             (document.activeElement as HTMLElement)?.blur(); // Remove focus from any active textarea when clicking on the canvas
         }
-        if (!selectedTool || selectedTool === "select" || selectedTool === "eraser") {
+        if (selectedTool === "select") {
+            const { x, y } = getCanvasPoint(e.clientX, e.clientY);
+            marqueeStart.current = { x, y };
+            setMarqueeRect({ x, y, width: 0, height: 0 });
+            return;
+        }
+        if (!selectedTool || selectedTool === "eraser") {
             return;
         }
         if (selectedTool === "text") {
@@ -479,6 +487,18 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
     }
 
     function handlePointerMove(e: React.PointerEvent<HTMLDivElement>) {
+        if (marqueeStart.current) {
+            const current = getCanvasPoint(e.clientX, e.clientY);
+            const start = marqueeStart.current;
+            setMarqueeRect({
+                x: Math.min(start.x, current.x),
+                y: Math.min(start.y, current.y),
+                width: Math.abs(current.x - start.x),
+                height: Math.abs(current.y - start.y),
+            });
+            return;
+        }
+
         if (triangleVertexDrag.current) {
             const current = getCanvasPoint(e.clientX, e.clientY);
             const { id, vertex } = triangleVertexDrag.current;
@@ -611,6 +631,32 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
     }
 
     function handlePointerUp() {
+        if (marqueeStart.current) {
+            const rect = marqueeRect;
+            marqueeStart.current = null;
+            setMarqueeRect(null);
+
+            if (rect) {
+                const marqueeMaxX = rect.x + rect.width;
+                const marqueeMaxY = rect.y + rect.height;
+                const matched = new Set<string | number>();
+
+                const checkIntersect = (item: Shape | Note | TextBox) => {
+                    const b = getBounds(item);
+                    if (b.maxX >= rect.x && b.minX <= marqueeMaxX && b.maxY >= rect.y && b.minY <= marqueeMaxY) {
+                        matched.add(item.id);
+                    }
+                };
+
+                shapesRef.current.forEach(checkIntersect);
+                notes.forEach(checkIntersect);
+                texts.forEach(checkIntersect);
+
+                setSelectedIds(matched);
+            }
+            return;
+        }
+
         // TODO: broadcast the finished shape (add or update)
         const wasDrawing = drawingId.current !== null;
         const moveId =
@@ -1117,6 +1163,18 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
                     </div>
                 );
             })}
+            {marqueeRect && (
+                <div
+                    className="absolute border border-blue-500 bg-blue-500/10"
+                    style={{
+                        left: marqueeRect.x,
+                        top: marqueeRect.y,
+                        width: marqueeRect.width,
+                        height: marqueeRect.height,
+                        pointerEvents: "none",
+                    }}
+                />
+            )}
         </div>
         </div>
     )
