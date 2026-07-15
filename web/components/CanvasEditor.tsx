@@ -104,6 +104,10 @@ type GroupDragEntry =
 
 const ERASER_CURSOR = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='5' fill='white' stroke='black' stroke-width='2'/%3E%3C/svg%3E") 8 8, auto`;
 
+// Padding around a shape's bounding box for both the selection outline and
+// the invisible drag hit-area for shapes with no filled interior (lines, pen).
+const SELECTION_PADDING = 6;
+
 // Every board lives in one fixed logical coordinate space, scaled to fit the
 // viewer's screen. Shapes are stored in these logical pixels, so all users see
 // the same layout regardless of window size.
@@ -859,7 +863,9 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
         return true;
     }
 
-    function handleLinePointerDown(e: React.PointerEvent<SVGLineElement>, shape: LineShape) {
+    // Widened to SVGElement (not SVGLineElement) since this is also called
+    // from the invisible drag hit-area rect, not just the visible line itself.
+    function handleLinePointerDown(e: React.PointerEvent<SVGElement>, shape: LineShape) {
         e.stopPropagation();
         if (selectedTool === "eraser") {
             deleteShape(shape.id);
@@ -905,7 +911,9 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
         setSelectedTriangleId(shape.id);
     }
 
-    function handlePenPointerDown(e: React.PointerEvent<SVGPathElement>, shape: PenShape) {
+    // Widened to SVGElement (not SVGPathElement) since this is also called
+    // from the invisible drag hit-area rect, not just the visible stroke.
+    function handlePenPointerDown(e: React.PointerEvent<SVGElement>, shape: PenShape) {
         e.stopPropagation();
         if (selectedTool === "eraser") {
             deleteShape(shape.id);
@@ -954,19 +962,36 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
     // their own wrapper div's className instead.
     function renderSelectionOutline(id: string | number, bounds: Bounds) {
         if (!selectedIds.has(id)) return null;
-        const PADDING = 6;
         return (
             <rect
-                x={bounds.minX - PADDING}
-                y={bounds.minY - PADDING}
-                width={bounds.maxX - bounds.minX + PADDING * 2}
-                height={bounds.maxY - bounds.minY + PADDING * 2}
+                x={bounds.minX - SELECTION_PADDING}
+                y={bounds.minY - SELECTION_PADDING}
+                width={bounds.maxX - bounds.minX + SELECTION_PADDING * 2}
+                height={bounds.maxY - bounds.minY + SELECTION_PADDING * 2}
                 fill="none"
                 stroke="#3b82f6"
                 strokeWidth="1.5"
                 strokeDasharray="4 3"
                 vectorEffect="non-scaling-stroke"
                 pointerEvents="none"
+            />
+        );
+    }
+
+    // Invisible hit-area matching the same padded box the selection outline
+    // draws — lines/pen have fill="none", so without this, only the thin
+    // visible stroke itself is draggable, not the space around it.
+    function renderDragHitArea(bounds: Bounds, onPointerDown: (e: React.PointerEvent<SVGRectElement>) => void) {
+        return (
+            <rect
+                x={bounds.minX - SELECTION_PADDING}
+                y={bounds.minY - SELECTION_PADDING}
+                width={bounds.maxX - bounds.minX + SELECTION_PADDING * 2}
+                height={bounds.maxY - bounds.minY + SELECTION_PADDING * 2}
+                fill="transparent"
+                className="pointer-events-auto"
+                style={getObjectCursorStyle()}
+                onPointerDown={onPointerDown}
             />
         );
     }
@@ -1031,6 +1056,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
     function renderLineShape(shape: LineShape) {
         return (
             <svg key={shape.id} className="pointer-events-none absolute inset-0 h-full w-full overflow-visible">
+                {renderDragHitArea(getBounds(shape), (e) => handleLinePointerDown(e, shape))}
                 <line
                     x1={shape.x1}
                     y1={shape.y1}
@@ -1113,6 +1139,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
     function renderPenShape(shape: PenShape) {
         return (
             <svg key={shape.id} className="pointer-events-none absolute inset-0 h-full w-full overflow-visible">
+                {renderDragHitArea(getBounds(shape), (e) => handlePenPointerDown(e, shape))}
                 <polyline
                     points={shape.points.map((p) => `${p.x},${p.y}`).join(" ")}
                     fill="none"
