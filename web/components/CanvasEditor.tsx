@@ -331,7 +331,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
         return () => {
             window.removeEventListener("keydown", handleKeyDown);
         };
-    }, [undo, redo, pasteClipboard]);
+    }, [undo, redo, pasteClipboard, copySelection]);
 
     useEffect(() => {
         shapesRef.current = shapes;
