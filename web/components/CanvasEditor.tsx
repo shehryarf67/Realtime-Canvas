@@ -71,6 +71,34 @@ function getBounds(item: Shape | Note | TextBox): Bounds {
     };
 }
 
+// Returns a copy of any selectable item shifted by (dx, dy) — the shared
+// math used to move an entire multi-selection together, regardless of
+// which of these four geometry shapes it happens to be.
+function shiftItemByDelta(item: Shape | Note | TextBox, dx: number, dy: number): Shape | Note | TextBox {
+    if ("points" in item) { // For pen strokes
+        return { ...item, points: item.points.map((p) => ({ x: p.x + dx, y: p.y + dy })) };
+    }
+    if ("x1" in item) { // For lines
+        return { ...item, x1: item.x1 + dx, y1: item.y1 + dy, x2: item.x2 + dx, y2: item.y2 + dy };
+    }
+    if ("p1" in item) { // For triangles
+        return {
+            ...item,
+            p1: { x: item.p1.x + dx, y: item.p1.y + dy },
+            p2: { x: item.p2.x + dx, y: item.p2.y + dy },
+            p3: { x: item.p3.x + dx, y: item.p3.y + dy },
+        };
+    }
+    return { ...item, x: item.x + dx, y: item.y + dy }; // Normal shapes (Squares, Circles, Notes)
+}
+
+// One entry in a group-drag snapshot — tagged with which state array it
+// belongs to, since shapes/notes/texts are stored (and set) separately.
+type GroupDragEntry =
+    | { kind: "shape"; original: Shape }
+    | { kind: "note"; original: Note }
+    | { kind: "text"; original: TextBox };
+
 
 
 
@@ -119,6 +147,14 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
         id: string;
         pointerStart: { x: number; y: number };
         pointsStart: Point[];
+    } | null>(null);
+    // Snapshot of every item in a multi-selection at the moment a group drag
+    // starts. dx/dy computed from pointerStart get applied to every entry's
+    // original geometry via shiftItemByDelta, regardless of which one you
+    // actually clicked to start the drag.
+    const groupDrag = useRef<{
+        pointerStart: Point;
+        items: GroupDragEntry[];
     } | null>(null);
     const shapesRef = useRef<Shape[]>([]);
     const lastEmitTimeRef = useRef<number>(0); // Tells when the cursor was last emitted to the server. This is used to throttle the cursor move events.
