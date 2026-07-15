@@ -661,11 +661,29 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
         setIsDrawing(false);
     }
 
+    // Plain click replaces the selection with just this id. Ctrl/Shift+click
+    // toggles it in/out of the current multi-selection.
+    function handleShapeSelect(e: { ctrlKey: boolean; shiftKey: boolean }, id: string | number) {
+        if (e.ctrlKey || e.shiftKey) {
+            setSelectedIds((prev) => {
+                const next = new Set(prev);
+                if (next.has(id)) next.delete(id);
+                else next.add(id);
+                return next;
+            });
+        } else {
+            setSelectedIds(new Set([id]));
+        }
+    }
+
     function handleLinePointerDown(e: React.PointerEvent<SVGLineElement>, shape: LineShape) {
         e.stopPropagation();
         if (selectedTool === "eraser") {
             deleteShape(shape.id);
             return;
+        }
+        if (selectedTool === "select") {
+            handleShapeSelect(e, shape.id);
         }
 
         lineDrag.current = {
@@ -686,6 +704,9 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
             deleteShape(shape.id);
             return;
         }
+        if (selectedTool === "select") {
+            handleShapeSelect(e, shape.id);
+        }
 
         triangleDrag.current = {
             id: shape.id,
@@ -704,6 +725,9 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
         if (selectedTool === "eraser") {
             deleteShape(shape.id);
             return;
+        }
+        if (selectedTool === "select") {
+            handleShapeSelect(e, shape.id);
         }
 
         penDrag.current = {
@@ -944,6 +968,9 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
                             if (selectedTool === "eraser") {
                                 e.stopPropagation();
                                 deleteShape(shape.id);
+                            } else if (selectedTool === "select") {
+                                e.stopPropagation();
+                                handleShapeSelect(e, shape.id);
                             }
                         }}
                         onDragStop={(e, data) => {
@@ -988,6 +1015,9 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
                         if (selectedTool === "eraser") {
                             e.stopPropagation();
                             deleteNote(note.id);
+                        } else if (selectedTool === "select") {
+                            e.stopPropagation();
+                            handleShapeSelect(e, note.id);
                         }
                     }}
                     onDragStart={() => setIsDraggingItem(true)}
@@ -1018,6 +1048,9 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
                         if (selectedTool === "eraser") {
                             e.stopPropagation();
                             deleteText(textBox.id);
+                        } else if (selectedTool === "select") {
+                            e.stopPropagation();
+                            handleShapeSelect(e, textBox.id);
                         }
                     }}
                     onDragStart={() => setIsDraggingItem(true)}
