@@ -29,8 +29,8 @@ type CanvasEditorProps = {
 };
 
 type HistoryEntry = {
-    do: CanvasMessage;
-    undo: CanvasMessage;
+    do: CanvasMessage | CanvasMessage[];
+    undo: CanvasMessage | CanvasMessage[];
 };
 
 function upsert<T extends { id: string | number }>(list: T[], item: T): T[] {
@@ -182,7 +182,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
         [roomId, socket]
     )
 
-    function pushHistory(doMessage: CanvasMessage, undoMessage: CanvasMessage) {
+    function pushHistory(doMessage: CanvasMessage | CanvasMessage[], undoMessage: CanvasMessage | CanvasMessage[]) {
         setPast((prev) => [...prev, { do: doMessage, undo: undoMessage }]);
         setFuture([]); // Clear future on new action which invalidates redo history
     }
@@ -210,8 +210,13 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
     const undo = useCallback(() => {
         if (past.length === 0) return;
         const lastAction = past[past.length - 1];
-        applyMessage(lastAction.undo);
-        broadcast(lastAction.undo);
+        // Check if the items selected are single or multiple, and apply the undo messages accordingly
+        // Same for Redo
+        const messages = Array.isArray(lastAction.undo) ? lastAction.undo : [lastAction.undo];
+        messages.forEach((m) => {
+            applyMessage(m);
+            broadcast(m);
+        });
         setPast((prev) => prev.slice(0, -1));
         setFuture((prev) => [...prev, lastAction]);
     }, [past, future]);
@@ -219,8 +224,11 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
     const redo = useCallback(() => {
         if (future.length === 0) return;
         const nextAction = future[future.length - 1];
-        applyMessage(nextAction.do);
-        broadcast(nextAction.do);
+        const messages = Array.isArray(nextAction.do) ? nextAction.do : [nextAction.do];
+        messages.forEach((m) => {
+            applyMessage(m);
+            broadcast(m);
+        });
         setFuture((prev) => prev.slice(0, -1));
         setPast((prev) => [...prev, nextAction]);
     }, [future, past]);
@@ -535,6 +543,35 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
             return;
         }
 
+        if (groupDrag.current) {
+            const current = getCanvasPoint(e.clientX, e.clientY);
+            const { pointerStart, items } = groupDrag.current;
+            const dx = current.x - pointerStart.x;
+            const dy = current.y - pointerStart.y;
+
+            const shiftedShapes = new Map<string | number, Shape>();
+            const shiftedNotes = new Map<string | number, Note>();
+            const shiftedTexts = new Map<string | number, TextBox>();
+
+            items.forEach((entry) => {
+                const shifted = shiftItemByDelta(entry.original, dx, dy);
+                if (entry.kind === "shape") shiftedShapes.set(entry.original.id, shifted as Shape);
+                else if (entry.kind === "note") shiftedNotes.set(entry.original.id, shifted as Note);
+                else shiftedTexts.set(entry.original.id, shifted as TextBox);
+            });
+
+            if (shiftedShapes.size > 0) {
+                setShapes((prev) => prev.map((s) => shiftedShapes.get(s.id) ?? s));
+            }
+            if (shiftedNotes.size > 0) {
+                setNotes((prev) => prev.map((n) => shiftedNotes.get(n.id) ?? n));
+            }
+            if (shiftedTexts.size > 0) {
+                setTexts((prev) => prev.map((t) => shiftedTexts.get(t.id) ?? t));
+            }
+            return;
+        }
+
         if (triangleVertexDrag.current) {
             const current = getCanvasPoint(e.clientX, e.clientY);
             const { id, vertex } = triangleVertexDrag.current;
@@ -693,6 +730,37 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
             return;
         }
 
+        if (groupDrag.current) {
+            const { items } = groupDrag.current;
+            const doMessages: CanvasMessage[] = [];
+            const undoMessages: CanvasMessage[] = [];
+
+            items.forEach((entry) => {
+                if (entry.kind === "shape") {
+                    const current = shapesRef.current.find((s) => s.id === entry.original.id);
+                    if (!current) return;
+                    doMessages.push({ kind: "shape", action: "update", payload: current });
+                    undoMessages.push({ kind: "shape", action: "update", payload: entry.original });
+                } else if (entry.kind === "note") {
+                    const current = notes.find((n) => n.id === entry.original.id);
+                    if (!current) return;
+                    doMessages.push({ kind: "note", action: "update", payload: current });
+                    undoMessages.push({ kind: "note", action: "update", payload: entry.original });
+                } else {
+                    const current = texts.find((t) => t.id === entry.original.id);
+                    if (!current) return;
+                    doMessages.push({ kind: "text", action: "update", payload: current });
+                    undoMessages.push({ kind: "text", action: "update", payload: entry.original });
+                }
+            });
+
+            doMessages.forEach((m) => broadcast(m));
+            pushHistory(doMessages, undoMessages);
+
+            groupDrag.current = null;
+            return;
+        }
+
         // TODO: broadcast the finished shape (add or update)
         const wasDrawing = drawingId.current !== null;
         const moveId =
@@ -743,8 +811,11 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
         setIsDrawing(false);
     }
 
-    // Plain click replaces the selection with just this id. Ctrl/Shift+click
-    // toggles it in/out of the current multi-selection.
+    // Plain click replaces the selection with just this id — unless it's
+    // already part of the current multi-selection, in which case we leave
+    // the selection untouched, so a plain click-and-drag on one of several
+    // already-selected shapes moves the whole group (standard convention).
+    // Ctrl/Shift+click always toggles this id in/out of the selection.
     function handleShapeSelect(e: { ctrlKey: boolean; shiftKey: boolean }, id: string | number) {
         if (e.ctrlKey || e.shiftKey) {
             setSelectedIds((prev) => {
@@ -753,9 +824,31 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
                 else next.add(id);
                 return next;
             });
-        } else {
+        } else if (!selectedIds.has(id)) {
             setSelectedIds(new Set([id]));
         }
+    }
+
+    // If this id is part of a multi-selection, snapshot every selected
+    // item's current geometry and start a group drag; returns true so the
+    // caller can skip setting up its own individual drag ref. Returns false
+    // (and does nothing) for a lone selection or no selection at all.
+    function startGroupDrag(e: { clientX: number; clientY: number }, id: string | number): boolean {
+        if (!(selectedIds.size > 1 && selectedIds.has(id))) return false;
+
+        const items: GroupDragEntry[] = [];
+        shapesRef.current.forEach((s) => {
+            if (selectedIds.has(s.id)) items.push({ kind: "shape", original: s });
+        });
+        notes.forEach((n) => {
+            if (selectedIds.has(n.id)) items.push({ kind: "note", original: n });
+        });
+        texts.forEach((t) => {
+            if (selectedIds.has(t.id)) items.push({ kind: "text", original: t });
+        });
+
+        groupDrag.current = { pointerStart: getCanvasPoint(e.clientX, e.clientY), items };
+        return true;
     }
 
     function handleLinePointerDown(e: React.PointerEvent<SVGLineElement>, shape: LineShape) {
@@ -767,6 +860,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
         if (selectedTool === "select") {
             handleShapeSelect(e, shape.id);
         }
+        if (startGroupDrag(e, shape.id)) return;
 
         lineDrag.current = {
             id: shape.id,
@@ -789,6 +883,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
         if (selectedTool === "select") {
             handleShapeSelect(e, shape.id);
         }
+        if (startGroupDrag(e, shape.id)) return;
 
         triangleDrag.current = {
             id: shape.id,
@@ -811,6 +906,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
         if (selectedTool === "select") {
             handleShapeSelect(e, shape.id);
         }
+        if (startGroupDrag(e, shape.id)) return;
 
         penDrag.current = {
             id: shape.id,
