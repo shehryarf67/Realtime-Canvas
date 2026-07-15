@@ -192,6 +192,23 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
         setFuture([]); // Clear future on new action which invalidates redo history
     }
 
+    // Derived from the actual current data, not a local counter — a local
+    // counter would desync across clients, since each browser's own counter
+    // starts independently and two users creating shapes around the same
+    // time would produce colliding values that mean different things on
+    // each screen.
+    function getNextZIndex(): number {
+        // ?? 0 guards against shapes persisted before zIndex existed (their
+        // stored data has no zIndex, so it comes back undefined) — without
+        // it, Math.max returns NaN and poisons every new shape's zIndex.
+        const allZ = [
+            ...shapes.map((s) => s.zIndex ?? 0),
+            ...notes.map((n) => n.zIndex ?? 0),
+            ...texts.map((t) => t.zIndex ?? 0),
+        ];
+        return allZ.length > 0 ? Math.max(...allZ) + 1 : 0;
+    }
+
     function copySelection() {
         const selectedShapes = shapes.filter((s) => selectedIds.has(s.id));
         const selectedNotes = notes.filter((n) => selectedIds.has(n.id));
@@ -208,17 +225,26 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
         const undoMessages: CanvasMessage[] = [];
         const newSelectedIds = new Set<string | number>();
 
+        // A single base value, incremented locally per item — calling
+        // getNextZIndex() again per item would return the same value every
+        // time, since state hasn't re-rendered between these calls.
+        const zIndexBase = getNextZIndex();
+        let zIndexCounter = 0;
+
         const newShapes: Shape[] = clippedShapes.map((s) => ({
             ...(shiftItemByDelta(s, PASTE_OFFSET, PASTE_OFFSET) as Shape),
             id: crypto.randomUUID(),
+            zIndex: zIndexBase + zIndexCounter++,
         }));
         const newNotes: Note[] = clippedNotes.map((n, i) => ({
             ...(shiftItemByDelta(n, PASTE_OFFSET, PASTE_OFFSET) as Note),
             id: Date.now() + i, // +i avoids id collisions when pasting several notes at once
+            zIndex: zIndexBase + zIndexCounter++,
         }));
         const newTexts: TextBox[] = clippedTexts.map((t) => ({
             ...(shiftItemByDelta(t, PASTE_OFFSET, PASTE_OFFSET) as TextBox),
             id: crypto.randomUUID(),
+            zIndex: zIndexBase + zIndexCounter++,
         }));
 
         if (newShapes.length > 0) {
@@ -288,6 +314,117 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
         doMessages.forEach((m) => broadcast(m));
         pushHistory(doMessages, undoMessages);
         setSelectedIds(new Set());
+    }
+
+    // Every shape/note/text combined, sorted by current zIndex — the shared
+    // view the four z-order actions below all work from.
+    function getAllItemsSorted(): { kind: "shape" | "note" | "text"; id: string | number; zIndex: number }[] {
+        return [
+            ...shapes.map((s) => ({ kind: "shape" as const, id: s.id, zIndex: s.zIndex ?? 0 })),
+            ...notes.map((n) => ({ kind: "note" as const, id: n.id, zIndex: n.zIndex ?? 0 })),
+            ...texts.map((t) => ({ kind: "text" as const, id: t.id, zIndex: t.zIndex ?? 0 })),
+        ].sort((a, b) => a.zIndex - b.zIndex);
+    }
+
+    // Shared by all four z-order actions: looks up each item's current full
+    // data, applies the new zIndex, updates state, and batches everything
+    // into one broadcast/undo entry — same pattern as paste/delete.
+    function applyZIndexUpdates(updates: { kind: "shape" | "note" | "text"; id: string | number; newZIndex: number }[]) {
+        if (updates.length === 0) return;
+
+        const doMessages: CanvasMessage[] = [];
+        const undoMessages: CanvasMessage[] = [];
+
+        updates.forEach(({ kind, id, newZIndex }) => {
+            if (kind === "shape") {
+                const current = shapes.find((s) => s.id === id);
+                if (!current) return;
+                const updated = { ...current, zIndex: newZIndex };
+                setShapes((prev) => prev.map((s) => (s.id === id ? updated : s)));
+                doMessages.push({ kind: "shape", action: "update", payload: updated });
+                undoMessages.push({ kind: "shape", action: "update", payload: current });
+            } else if (kind === "note") {
+                const current = notes.find((n) => n.id === id);
+                if (!current) return;
+                const updated = { ...current, zIndex: newZIndex };
+                setNotes((prev) => prev.map((n) => (n.id === id ? updated : n)));
+                doMessages.push({ kind: "note", action: "update", payload: updated });
+                undoMessages.push({ kind: "note", action: "update", payload: current });
+            } else {
+                const current = texts.find((t) => t.id === id);
+                if (!current) return;
+                const updated = { ...current, zIndex: newZIndex };
+                setTexts((prev) => prev.map((t) => (t.id === id ? updated : t)));
+                doMessages.push({ kind: "text", action: "update", payload: updated });
+                undoMessages.push({ kind: "text", action: "update", payload: current });
+            }
+        });
+
+        if (doMessages.length === 0) return;
+        doMessages.forEach((m) => broadcast(m));
+        pushHistory(doMessages, undoMessages);
+    }
+
+    function bringSelectionToFront() {
+        if (selectedIds.size === 0) return;
+        const selectedInOrder = getAllItemsSorted().filter((entry) => selectedIds.has(entry.id));
+        const base = getNextZIndex();
+        applyZIndexUpdates(
+            selectedInOrder.map((entry, i) => ({ kind: entry.kind, id: entry.id, newZIndex: base + i }))
+        );
+    }
+
+    function sendSelectionToBack() {
+        if (selectedIds.size === 0) return;
+        const all = getAllItemsSorted();
+        const selectedInOrder = all.filter((entry) => selectedIds.has(entry.id));
+        const minZ = all.length > 0 ? all[0].zIndex : 0;
+        const base = minZ - selectedInOrder.length;
+        applyZIndexUpdates(
+            selectedInOrder.map((entry, i) => ({ kind: entry.kind, id: entry.id, newZIndex: base + i }))
+        );
+    }
+
+    // Swaps each selected item with its nearest non-selected neighbor one
+    // step above/below. Correct for a single selected item or a scattered
+    // multi-selection; two adjacent selected items sharing the same nearest
+    // neighbor is a known edge case not handled here.
+    function bringSelectionForward() {
+        if (selectedIds.size === 0) return;
+        const all = getAllItemsSorted();
+        const updates: { kind: "shape" | "note" | "text"; id: string | number; newZIndex: number }[] = [];
+
+        for (let i = all.length - 1; i >= 0; i--) {
+            const entry = all[i];
+            if (!selectedIds.has(entry.id)) continue;
+            let j = i + 1;
+            while (j < all.length && selectedIds.has(all[j].id)) j++;
+            if (j < all.length) {
+                const neighbor = all[j];
+                updates.push({ kind: entry.kind, id: entry.id, newZIndex: neighbor.zIndex });
+                updates.push({ kind: neighbor.kind, id: neighbor.id, newZIndex: entry.zIndex });
+            }
+        }
+        applyZIndexUpdates(updates);
+    }
+
+    function sendSelectionBackward() {
+        if (selectedIds.size === 0) return;
+        const all = getAllItemsSorted();
+        const updates: { kind: "shape" | "note" | "text"; id: string | number; newZIndex: number }[] = [];
+
+        for (let i = 0; i < all.length; i++) {
+            const entry = all[i];
+            if (!selectedIds.has(entry.id)) continue;
+            let j = i - 1;
+            while (j >= 0 && selectedIds.has(all[j].id)) j--;
+            if (j >= 0) {
+                const neighbor = all[j];
+                updates.push({ kind: entry.kind, id: entry.id, newZIndex: neighbor.zIndex });
+                updates.push({ kind: neighbor.kind, id: neighbor.id, newZIndex: entry.zIndex });
+            }
+        }
+        applyZIndexUpdates(updates);
     }
 
     const applyMessage = useCallback((message: CanvasMessage) => {
@@ -363,6 +500,18 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
             } else if (e.key === "Delete" || e.key === "Backspace") {
                 e.preventDefault();
                 deleteSelection();
+            } else if (e.ctrlKey && e.shiftKey && e.code === "BracketRight") {
+                e.preventDefault();
+                bringSelectionToFront();
+            } else if (e.ctrlKey && e.shiftKey && e.code === "BracketLeft") {
+                e.preventDefault();
+                sendSelectionToBack();
+            } else if (e.ctrlKey && e.code === "BracketRight") {
+                e.preventDefault();
+                bringSelectionForward();
+            } else if (e.ctrlKey && e.code === "BracketLeft") {
+                e.preventDefault();
+                sendSelectionBackward();
             }
         };
 
@@ -371,7 +520,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
         return () => {
             window.removeEventListener("keydown", handleKeyDown);
         };
-    }, [undo, redo, pasteClipboard, copySelection, deleteSelection]);
+    }, [undo, redo, pasteClipboard, copySelection, deleteSelection, bringSelectionToFront, sendSelectionToBack, bringSelectionForward, sendSelectionBackward]);
 
     useEffect(() => {
         shapesRef.current = shapes;
@@ -591,6 +740,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
                 y,
                 width: 200,
                 height: 48,
+                zIndex: getNextZIndex(),
             };
             setTexts((prev) => [...prev, newText]);
             // We use the new array due to React's immutability
@@ -609,6 +759,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
                 y,
                 width: 200,
                 height: 200,
+                zIndex: getNextZIndex(),
             }
             setNotes((prev) => [...prev, newNote]);
             broadcast({ kind: "note", action: "add", payload: newNote });
@@ -618,7 +769,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
         if (selectedTool === "pen") {
             const { x, y } = getCanvasPoint(e.clientX, e.clientY);
             const id = crypto.randomUUID();
-            const newShape: Shape = { id, type: "pen", points: [{ x, y }], colour: selectedColour };
+            const newShape: Shape = { id, type: "pen", points: [{ x, y }], colour: selectedColour, zIndex: getNextZIndex() };
             setShapes((prev) => [...prev, newShape]);
             drawingId.current = id;
             startPoint.current = { x, y };
@@ -628,12 +779,13 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
         const { x, y } = getCanvasPoint(e.clientX, e.clientY);
         const id = crypto.randomUUID();
 
+        const nextZIndex = getNextZIndex();
         const newShape: Shape = (
             selectedTool === "line"
-                ? { id, type: "line", x1: x, y1: y, x2: x, y2: y, colour: selectedColour }
+                ? { id, type: "line", x1: x, y1: y, x2: x, y2: y, colour: selectedColour, zIndex: nextZIndex }
                 : selectedTool === "triangle"
-                    ? { id, type: "triangle", p1: { x, y }, p2: { x, y }, p3: { x, y }, colour: selectedColour }
-                    : { id, type: selectedTool as any, x, y, width: 0, height: 0, colour: selectedColour }
+                    ? { id, type: "triangle", p1: { x, y }, p2: { x, y }, p3: { x, y }, colour: selectedColour, zIndex: nextZIndex }
+                    : { id, type: selectedTool as any, x, y, width: 0, height: 0, colour: selectedColour, zIndex: nextZIndex }
         ) as Shape;
 
         setShapes((prev) => [...prev, newShape]);
@@ -1270,6 +1422,179 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
         )
     }
 
+    function renderShapeItem(shape: Shape) {
+        if (shape.type === "line") {
+            return renderLineShape(shape);
+        }
+        if (shape.type === "triangle") {
+            return renderTriangleShape(shape);
+        }
+        if (shape.type === "pen") {
+            return renderPenShape(shape);
+        }
+
+        // Only render draggable/resizable boxes for shapes that have width/height
+        if (!("width" in shape && "height" in shape)) {
+            return null;
+        }
+
+        return (
+            <Rnd
+                key={shape.id}
+                size={{ width: shape.width, height: shape.height }}
+                position={{ x: shape.x, y: shape.y }}
+                bounds="parent"
+                scale={scale}
+                disableDragging={isDrawing || isGroupDragEligible(shape.id)}
+                enableResizing={!isDrawing}
+                onPointerDown={(e: React.PointerEvent<HTMLElement>) => {
+                    if (selectedTool === "eraser") {
+                        e.stopPropagation();
+                        deleteShape(shape.id);
+                    } else if (selectedTool === "select") {
+                        e.stopPropagation();
+                        handleShapeSelect(e, shape.id);
+                        startGroupDrag(e, shape.id);
+                    }
+                }}
+                onDragStop={(e, data) => {
+                    const updated = { ...shape, x: data.x, y: data.y };
+                    setShapes((prev) =>
+                        prev.map((s) => (s.id === shape.id ? updated : s))
+                    );
+                    const doMessage: CanvasMessage = { kind: "shape", action: "update", payload: updated };
+                    broadcast(doMessage);
+                    pushHistory(doMessage, { kind: "shape", action: "update", payload: shape });
+                }}
+                onResizeStop={(e, direction, ref, delta, position) => {
+                    const updated = {
+                        ...shape,
+                        width: parseInt(ref.style.width),
+                        height: parseInt(ref.style.height),
+                        x: position.x,
+                        y: position.y,
+                    };
+                    setShapes((prev) =>
+                        prev.map((s) => (s.id === shape.id ? updated : s))
+                    );
+                    const doMessage: CanvasMessage = { kind: "shape", action: "update", payload: updated };
+                    broadcast(doMessage);
+                    pushHistory(doMessage, { kind: "shape", action: "update", payload: shape });
+                }}
+            >
+                <div className={`h-full w-full ${selectedIds.has(shape.id) ? "ring-2 ring-blue-500 ring-offset-2" : ""}`} style={getObjectCursorStyle()}>
+                    {renderBoxShape(shape)}
+                </div>
+            </Rnd>
+        );
+    }
+
+    function renderNoteItem(note: Note) {
+        return (
+            <Rnd
+                key={note.id}
+                size={{ width: note.width, height: note.height }}
+                position={{ x: note.x, y: note.y }}
+                bounds="parent"
+                scale={scale}
+                disableDragging={isGroupDragEligible(note.id)}
+                onPointerDown={(e: React.PointerEvent<HTMLElement>) => {
+                    if (selectedTool === "eraser") {
+                        e.stopPropagation();
+                        deleteNote(note.id);
+                    } else if (selectedTool === "select") {
+                        e.stopPropagation();
+                        handleShapeSelect(e, note.id);
+                        startGroupDrag(e, note.id);
+                    }
+                }}
+                onDragStart={() => setIsDraggingItem(true)}
+                onDragStop={(e, data) => {
+                    setIsDraggingItem(false);
+                    const updated = { ...note, x: data.x, y: data.y };
+                    setNotes((prev) =>
+                        prev.map((n) => (n.id === note.id ? updated : n))
+                    );
+                    const doMessage: CanvasMessage = { kind: "note", action: "update", payload: updated };
+                    broadcast(doMessage);
+                    pushHistory(doMessage, { kind: "note", action: "update", payload: note });
+                }}
+            >
+                <div className={`h-full w-full ${selectedIds.has(note.id) ? "ring-2 ring-blue-500 ring-offset-2" : ""}`} style={getObjectCursorStyle()}>
+                    {renderNote(note)}
+                </div>
+            </Rnd>
+        );
+    }
+
+    function renderTextItem(textBox: TextBox) {
+        return (
+            <Rnd
+                key={textBox.id}
+                size={{ width: textBox.width, height: textBox.height }}
+                position={{ x: textBox.x, y: textBox.y }}
+                bounds="parent"
+                scale={scale}
+                disableDragging={isGroupDragEligible(textBox.id)}
+                onPointerDown={(e: React.PointerEvent<HTMLElement>) => {
+                    if (selectedTool === "eraser") {
+                        e.stopPropagation();
+                        deleteText(textBox.id);
+                    } else if (selectedTool === "select") {
+                        e.stopPropagation();
+                        handleShapeSelect(e, textBox.id);
+                        startGroupDrag(e, textBox.id);
+                    }
+                }}
+                onDragStart={() => setIsDraggingItem(true)}
+                onDragStop={(e, data) => {
+                    setIsDraggingItem(false);
+                    const updated = { ...textBox, x: data.x, y: data.y };
+                    setTexts((prev) =>
+                        prev.map((text) => (text.id === textBox.id ? updated : text))
+                    );
+                    const doMessage: CanvasMessage = { kind: "text", action: "update", payload: updated };
+                    broadcast(doMessage);
+                    pushHistory(doMessage, { kind: "text", action: "update", payload: textBox });
+                }}
+                onResizeStop={(e, direction, ref, delta, position) => {
+                    const updated = {
+                        ...textBox,
+                        width: parseInt(ref.style.width),
+                        height: parseInt(ref.style.height),
+                        x: position.x,
+                        y: position.y,
+                    };
+                    setTexts((prev) =>
+                        prev.map((text) => (text.id === textBox.id ? updated : text))
+                    );
+                    const doMessage: CanvasMessage = { kind: "text", action: "update", payload: updated };
+                    broadcast(doMessage);
+                    pushHistory(doMessage, { kind: "text", action: "update", payload: textBox });
+                }}
+            >
+                <div className={`h-full w-full ${selectedIds.has(textBox.id) ? "ring-2 ring-blue-500 ring-offset-2" : ""}`} style={getObjectCursorStyle()}>
+                    {renderText(textBox)}
+                </div>
+            </Rnd>
+        );
+    }
+
+    // One combined, z-sorted list spanning all three kinds — this is what
+    // actually fixes cross-kind stacking (previously notes always painted
+    // over shapes and texts always painted over both, regardless of
+    // z-index, since they were three separate sibling blocks in render order).
+    type RenderEntry =
+        | { kind: "shape"; item: Shape }
+        | { kind: "note"; item: Note }
+        | { kind: "text"; item: TextBox };
+
+    const canvasItems: RenderEntry[] = [
+        ...shapes.map((item): RenderEntry => ({ kind: "shape", item })),
+        ...notes.map((item): RenderEntry => ({ kind: "note", item })),
+        ...texts.map((item): RenderEntry => ({ kind: "text", item })),
+    ].sort((a, b) => (a.item.zIndex ?? 0) - (b.item.zIndex ?? 0));
+
     return (
         <div
             ref={wrapperRef}
@@ -1290,157 +1615,16 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
                 ...getCanvasCursorStyle(),
             }}
         >
-            {shapes.map((shape) => {
-                if (shape.type === "line") {
-                    return renderLineShape(shape);
+            {canvasItems.map((entry) => {
+                switch (entry.kind) {
+                    case "shape":
+                        return renderShapeItem(entry.item);
+                    case "note":
+                        return renderNoteItem(entry.item);
+                    case "text":
+                        return renderTextItem(entry.item);
                 }
-                if (shape.type === "triangle") {
-                    return renderTriangleShape(shape);
-                }
-                if (shape.type === "pen") {
-                    return renderPenShape(shape);
-                }
-
-                // Only render draggable/resizable boxes for shapes that have width/height
-                if (!("width" in shape && "height" in shape)) {
-                    return null;
-                }
-
-                return (
-                    <Rnd
-                        key={shape.id}
-                        size={{ width: shape.width, height: shape.height }}
-                        position={{ x: shape.x, y: shape.y }}
-                        bounds="parent"
-                        scale={scale}
-                        disableDragging={isDrawing || isGroupDragEligible(shape.id)}
-                        enableResizing={!isDrawing}
-                        onPointerDown={(e: React.PointerEvent<HTMLElement>) => {
-                            if (selectedTool === "eraser") {
-                                e.stopPropagation();
-                                deleteShape(shape.id);
-                            } else if (selectedTool === "select") {
-                                e.stopPropagation();
-                                handleShapeSelect(e, shape.id);
-                                startGroupDrag(e, shape.id);
-                            }
-                        }}
-                        onDragStop={(e, data) => {
-                            const updated = { ...shape, x: data.x, y: data.y };
-                            setShapes((prev) =>
-                                prev.map((s) => (s.id === shape.id ? updated : s))
-                            );
-                            const doMessage: CanvasMessage = { kind: "shape", action: "update", payload: updated };
-                            broadcast(doMessage);
-                            pushHistory(doMessage, { kind: "shape", action: "update", payload: shape });
-                        }}
-                        onResizeStop={(e, direction, ref, delta, position) => {
-                            const updated = {
-                                ...shape,
-                                width: parseInt(ref.style.width),
-                                height: parseInt(ref.style.height),
-                                x: position.x,
-                                y: position.y,
-                            };
-                            setShapes((prev) =>
-                                prev.map((s) => (s.id === shape.id ? updated : s))
-                            );
-                            const doMessage: CanvasMessage = { kind: "shape", action: "update", payload: updated };
-                            broadcast(doMessage);
-                            pushHistory(doMessage, { kind: "shape", action: "update", payload: shape });
-                        }}
-                    >
-                        <div className={`h-full w-full ${selectedIds.has(shape.id) ? "ring-2 ring-blue-500 ring-offset-2" : ""}`} style={getObjectCursorStyle()}>
-                            {renderBoxShape(shape)}
-                        </div>
-                    </Rnd>
-                );
             })}
-            {notes.map((note) => (
-                <Rnd
-                    key={note.id}
-                    size={{ width: note.width, height: note.height }}
-                    position={{ x: note.x, y: note.y }}
-                    bounds="parent"
-                    scale={scale}
-                    disableDragging={isGroupDragEligible(note.id)}
-                    onPointerDown={(e: React.PointerEvent<HTMLElement>) => {
-                        if (selectedTool === "eraser") {
-                            e.stopPropagation();
-                            deleteNote(note.id);
-                        } else if (selectedTool === "select") {
-                            e.stopPropagation();
-                            handleShapeSelect(e, note.id);
-                            startGroupDrag(e, note.id);
-                        }
-                    }}
-                    onDragStart={() => setIsDraggingItem(true)}
-                    onDragStop={(e, data) => {
-                        setIsDraggingItem(false);
-                        const updated = { ...note, x: data.x, y: data.y };
-                        setNotes((prev) =>
-                            prev.map((n) => (n.id === note.id ? updated : n))
-                        );
-                        const doMessage: CanvasMessage = { kind: "note", action: "update", payload: updated };
-                        broadcast(doMessage);
-                        pushHistory(doMessage, { kind: "note", action: "update", payload: note });
-                    }}
-                >
-                    <div className={`h-full w-full ${selectedIds.has(note.id) ? "ring-2 ring-blue-500 ring-offset-2" : ""}`} style={getObjectCursorStyle()}>
-                        {renderNote(note)}
-                    </div>
-                </Rnd>
-            ))}
-            {texts.map((textBox) => (
-                <Rnd
-                    key={textBox.id}
-                    size={{ width: textBox.width, height: textBox.height }}
-                    position={{ x: textBox.x, y: textBox.y }}
-                    bounds="parent"
-                    scale={scale}
-                    disableDragging={isGroupDragEligible(textBox.id)}
-                    onPointerDown={(e: React.PointerEvent<HTMLElement>) => {
-                        if (selectedTool === "eraser") {
-                            e.stopPropagation();
-                            deleteText(textBox.id);
-                        } else if (selectedTool === "select") {
-                            e.stopPropagation();
-                            handleShapeSelect(e, textBox.id);
-                            startGroupDrag(e, textBox.id);
-                        }
-                    }}
-                    onDragStart={() => setIsDraggingItem(true)}
-                    onDragStop={(e, data) => {
-                        setIsDraggingItem(false);
-                        const updated = { ...textBox, x: data.x, y: data.y };
-                        setTexts((prev) =>
-                            prev.map((text) => (text.id === textBox.id ? updated : text))
-                        );
-                        const doMessage: CanvasMessage = { kind: "text", action: "update", payload: updated };
-                        broadcast(doMessage);
-                        pushHistory(doMessage, { kind: "text", action: "update", payload: textBox });
-                    }}
-                    onResizeStop={(e, direction, ref, delta, position) => {
-                        const updated = {
-                            ...textBox,
-                            width: parseInt(ref.style.width),
-                            height: parseInt(ref.style.height),
-                            x: position.x,
-                            y: position.y,
-                        };
-                        setTexts((prev) =>
-                            prev.map((text) => (text.id === textBox.id ? updated : text))
-                        );
-                        const doMessage: CanvasMessage = { kind: "text", action: "update", payload: updated };
-                        broadcast(doMessage);
-                        pushHistory(doMessage, { kind: "text", action: "update", payload: textBox });
-                    }}
-                >
-                    <div className={`h-full w-full ${selectedIds.has(textBox.id) ? "ring-2 ring-blue-500 ring-offset-2" : ""}`} style={getObjectCursorStyle()}>
-                        {renderText(textBox)}
-                    </div>
-                </Rnd>
-            ))}
             {Array.from(userMap.entries()).map(([userId, cursor]) => {
                 const colour = getCursorColour(userId);
                 return (

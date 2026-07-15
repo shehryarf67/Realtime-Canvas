@@ -16,6 +16,7 @@ type BoxShapeBase = {
   width: number;
   height: number;
   colour: string;
+  zIndex: number;
 };
 
 export type SquareShape = BoxShapeBase & {
@@ -40,6 +41,7 @@ export type TriangleShape = {
   p2: Point;
   p3: Point;
   colour: string;
+  zIndex: number;
 };
 
 export type LineShape = {
@@ -50,9 +52,10 @@ export type LineShape = {
   x2: number;
   y2: number;
   colour: string;
+  zIndex: number;
 };
 
-export type PenShape = { id: string; type: "pen"; points: Point[]; colour: string }
+export type PenShape = { id: string; type: "pen"; points: Point[]; colour: string; zIndex: number }
 
 export type Shape = BoxShape | TriangleShape | LineShape | PenShape;
 
@@ -64,6 +67,7 @@ export interface Note {
   y: number,
   width: number,
   height: number,
+  zIndex: number,
 }
 
 export type TextBox = {
@@ -74,6 +78,7 @@ export type TextBox = {
   y: number;
   width: number;
   height: number;
+  zIndex: number;
 };
 
 export type CanvasMessage =
