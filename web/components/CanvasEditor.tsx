@@ -177,6 +177,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
     const [past, setPast] = useState<HistoryEntry[]>([]);
     const [future, setFuture] = useState<HistoryEntry[]>([]);
     const isDeletedRef = useRef(false);
+    const clipboard = useRef<{ shapes: Shape[]; notes: Note[]; texts: TextBox[] } | null>(null);
 
     const broadcast = useCallback(
         (message: CanvasMessage) => {
@@ -189,6 +190,66 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
     function pushHistory(doMessage: CanvasMessage | CanvasMessage[], undoMessage: CanvasMessage | CanvasMessage[]) {
         setPast((prev) => [...prev, { do: doMessage, undo: undoMessage }]);
         setFuture([]); // Clear future on new action which invalidates redo history
+    }
+
+    function copySelection() {
+        const selectedShapes = shapes.filter((s) => selectedIds.has(s.id));
+        const selectedNotes = notes.filter((n) => selectedIds.has(n.id));
+        const selectedTexts = texts.filter((t) => selectedIds.has(t.id));
+        clipboard.current = { shapes: selectedShapes, notes: selectedNotes, texts: selectedTexts };
+    }
+
+    function pasteClipboard() {
+        if (!clipboard.current) return;
+        const { shapes: clippedShapes, notes: clippedNotes, texts: clippedTexts } = clipboard.current;
+        const PASTE_OFFSET = 20; // Nudge pasted copies so they don't land exactly on the originals
+
+        const doMessages: CanvasMessage[] = [];
+        const undoMessages: CanvasMessage[] = [];
+        const newSelectedIds = new Set<string | number>();
+
+        const newShapes: Shape[] = clippedShapes.map((s) => ({
+            ...(shiftItemByDelta(s, PASTE_OFFSET, PASTE_OFFSET) as Shape),
+            id: crypto.randomUUID(),
+        }));
+        const newNotes: Note[] = clippedNotes.map((n, i) => ({
+            ...(shiftItemByDelta(n, PASTE_OFFSET, PASTE_OFFSET) as Note),
+            id: Date.now() + i, // +i avoids id collisions when pasting several notes at once
+        }));
+        const newTexts: TextBox[] = clippedTexts.map((t) => ({
+            ...(shiftItemByDelta(t, PASTE_OFFSET, PASTE_OFFSET) as TextBox),
+            id: crypto.randomUUID(),
+        }));
+
+        if (newShapes.length > 0) {
+            setShapes((prev) => [...prev, ...newShapes]);
+            newShapes.forEach((s) => {
+                newSelectedIds.add(s.id);
+                doMessages.push({ kind: "shape", action: "add", payload: s });
+                undoMessages.push({ kind: "shape", action: "delete", id: s.id });
+            });
+        }
+        if (newNotes.length > 0) {
+            setNotes((prev) => [...prev, ...newNotes]);
+            newNotes.forEach((n) => {
+                newSelectedIds.add(n.id);
+                doMessages.push({ kind: "note", action: "add", payload: n });
+                undoMessages.push({ kind: "note", action: "delete", id: n.id });
+            });
+        }
+        if (newTexts.length > 0) {
+            setTexts((prev) => [...prev, ...newTexts]);
+            newTexts.forEach((t) => {
+                newSelectedIds.add(t.id);
+                doMessages.push({ kind: "text", action: "add", payload: t });
+                undoMessages.push({ kind: "text", action: "delete", id: t.id });
+            });
+        }
+
+        if (doMessages.length === 0) return;
+        doMessages.forEach((m) => broadcast(m));
+        pushHistory(doMessages, undoMessages);
+        setSelectedIds(newSelectedIds);
     }
 
     const applyMessage = useCallback((message: CanvasMessage) => {
@@ -255,6 +316,13 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
             } else if (e.ctrlKey && e.key === "y") {
                 e.preventDefault();
                 redo();
+            } else if (e.ctrlKey && e.key === "v") {
+                e.preventDefault();
+                pasteClipboard();
+            }
+            else if (e.ctrlKey && e.key === "c") {
+                e.preventDefault();
+                copySelection();
             }
         };
 
@@ -263,7 +331,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
         return () => {
             window.removeEventListener("keydown", handleKeyDown);
         };
-    }, [undo, redo]);
+    }, [undo, redo, pasteClipboard]);
 
     useEffect(() => {
         shapesRef.current = shapes;
