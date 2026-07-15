@@ -829,6 +829,14 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
         }
     }
 
+    // Used to disable react-rnd's own built-in dragging for a shape that's
+    // part of a multi-selection, so the canvas-level groupDrag mechanism
+    // (shared with lines/triangles/pen) handles its movement instead —
+    // otherwise Rnd's internal drag and our own would fight over position.
+    function isGroupDragEligible(id: string | number): boolean {
+        return selectedTool === "select" && selectedIds.size > 1 && selectedIds.has(id);
+    }
+
     // If this id is part of a multi-selection, snapshot every selected
     // item's current geometry and start a group drag; returns true so the
     // caller can skip setting up its own individual drag ref. Returns false
@@ -941,6 +949,28 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
         }
     }
 
+    // Dashed selection outline for shapes with no Rnd wrapper box to put a
+    // ring on (lines/triangles/pen) — box shapes/notes/texts get a ring via
+    // their own wrapper div's className instead.
+    function renderSelectionOutline(id: string | number, bounds: Bounds) {
+        if (!selectedIds.has(id)) return null;
+        const PADDING = 6;
+        return (
+            <rect
+                x={bounds.minX - PADDING}
+                y={bounds.minY - PADDING}
+                width={bounds.maxX - bounds.minX + PADDING * 2}
+                height={bounds.maxY - bounds.minY + PADDING * 2}
+                fill="none"
+                stroke="#3b82f6"
+                strokeWidth="1.5"
+                strokeDasharray="4 3"
+                vectorEffect="non-scaling-stroke"
+                pointerEvents="none"
+            />
+        );
+    }
+
     function renderTriangleShape(shape: TriangleShape) {
         const points = `${shape.p1.x},${shape.p1.y} ${shape.p2.x},${shape.p2.y} ${shape.p3.x},${shape.p3.y}`;
 
@@ -956,6 +986,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
                     style={getObjectCursorStyle()}
                     onPointerDown={(e) => handleTrianglePointerDown(e, shape)}
                 />
+                {renderSelectionOutline(shape.id, getBounds(shape))}
                 {selectedTriangleId === shape.id && (
                     <>
                         <circle
@@ -1012,6 +1043,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
                     style={getObjectCursorStyle()}
                     onPointerDown={(e) => handleLinePointerDown(e, shape)}
                 />
+                {renderSelectionOutline(shape.id, getBounds(shape))}
             </svg>
         );
     }
@@ -1093,6 +1125,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
                     style={getObjectCursorStyle()}
                     onPointerDown={(e) => handlePenPointerDown(e, shape)}
                 />
+                {renderSelectionOutline(shape.id, getBounds(shape))}
             </svg>
         )
     }
@@ -1140,7 +1173,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
                         position={{ x: shape.x, y: shape.y }}
                         bounds="parent"
                         scale={scale}
-                        disableDragging={isDrawing}
+                        disableDragging={isDrawing || isGroupDragEligible(shape.id)}
                         enableResizing={!isDrawing}
                         onPointerDown={(e: React.PointerEvent<HTMLElement>) => {
                             if (selectedTool === "eraser") {
@@ -1149,6 +1182,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
                             } else if (selectedTool === "select") {
                                 e.stopPropagation();
                                 handleShapeSelect(e, shape.id);
+                                startGroupDrag(e, shape.id);
                             }
                         }}
                         onDragStop={(e, data) => {
@@ -1176,7 +1210,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
                             pushHistory(doMessage, { kind: "shape", action: "update", payload: shape });
                         }}
                     >
-                        <div className="h-full w-full" style={getObjectCursorStyle()}>
+                        <div className={`h-full w-full ${selectedIds.has(shape.id) ? "ring-2 ring-blue-500 ring-offset-2" : ""}`} style={getObjectCursorStyle()}>
                             {renderBoxShape(shape)}
                         </div>
                     </Rnd>
@@ -1189,6 +1223,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
                     position={{ x: note.x, y: note.y }}
                     bounds="parent"
                     scale={scale}
+                    disableDragging={isGroupDragEligible(note.id)}
                     onPointerDown={(e: React.PointerEvent<HTMLElement>) => {
                         if (selectedTool === "eraser") {
                             e.stopPropagation();
@@ -1196,6 +1231,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
                         } else if (selectedTool === "select") {
                             e.stopPropagation();
                             handleShapeSelect(e, note.id);
+                            startGroupDrag(e, note.id);
                         }
                     }}
                     onDragStart={() => setIsDraggingItem(true)}
@@ -1210,7 +1246,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
                         pushHistory(doMessage, { kind: "note", action: "update", payload: note });
                     }}
                 >
-                    <div className="h-full w-full" style={getObjectCursorStyle()}>
+                    <div className={`h-full w-full ${selectedIds.has(note.id) ? "ring-2 ring-blue-500 ring-offset-2" : ""}`} style={getObjectCursorStyle()}>
                         {renderNote(note)}
                     </div>
                 </Rnd>
@@ -1222,6 +1258,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
                     position={{ x: textBox.x, y: textBox.y }}
                     bounds="parent"
                     scale={scale}
+                    disableDragging={isGroupDragEligible(textBox.id)}
                     onPointerDown={(e: React.PointerEvent<HTMLElement>) => {
                         if (selectedTool === "eraser") {
                             e.stopPropagation();
@@ -1229,6 +1266,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
                         } else if (selectedTool === "select") {
                             e.stopPropagation();
                             handleShapeSelect(e, textBox.id);
+                            startGroupDrag(e, textBox.id);
                         }
                     }}
                     onDragStart={() => setIsDraggingItem(true)}
@@ -1258,7 +1296,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
                         pushHistory(doMessage, { kind: "text", action: "update", payload: textBox });
                     }}
                 >
-                    <div className="h-full w-full" style={getObjectCursorStyle()}>
+                    <div className={`h-full w-full ${selectedIds.has(textBox.id) ? "ring-2 ring-blue-500 ring-offset-2" : ""}`} style={getObjectCursorStyle()}>
                         {renderText(textBox)}
                     </div>
                 </Rnd>
