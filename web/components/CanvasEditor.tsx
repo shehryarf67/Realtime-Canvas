@@ -319,8 +319,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
             } else if (e.ctrlKey && e.key === "v") {
                 e.preventDefault();
                 pasteClipboard();
-            }
-            else if (e.ctrlKey && e.key === "c") {
+            } else if (e.ctrlKey && e.key === "c") {
                 e.preventDefault();
                 copySelection();
             }
