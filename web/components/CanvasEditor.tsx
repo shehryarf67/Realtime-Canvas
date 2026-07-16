@@ -167,7 +167,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
         kind: "shape" | "note" | "text";
         id: string | number;
         center: Point;
-        original: BoxShape | Note | TextBox;
+        original: Shape | Note | TextBox;
     } | null>(null);
     const shapesRef = useRef<Shape[]>([]);
     const lastEmitTimeRef = useRef<number>(0); // Tells when the cursor was last emitted to the server. This is used to throttle the cursor move events.
@@ -1265,45 +1265,58 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
         };
     }
 
-    // Only box shapes (square/circle), notes, and texts are rotatable, and only
-    // one at a time — lines/triangles/pen encode orientation in their points,
-    // and multi-item rotation is a separate problem. Returns the lone selected
-    // rectangle item (tagged with its kind) or null.
-    type Rotatable =
-        | { kind: "shape"; item: BoxShape }
-        | { kind: "note"; item: Note }
-        | { kind: "text"; item: TextBox };
+    // Bounding-box centre (the rotation pivot) and half-height (how far above
+    // the centre the handle stem starts) for any rotatable item. Derived from
+    // getBounds so it works uniformly for box shapes, triangles, pen strokes,
+    // notes, and texts — whatever their underlying geometry.
+    function rotatableGeometry(item: Shape | Note | TextBox): { center: Point; halfHeight: number } {
+        const b = getBounds(item);
+        return {
+            center: { x: (b.minX + b.maxX) / 2, y: (b.minY + b.maxY) / 2 },
+            halfHeight: (b.maxY - b.minY) / 2,
+        };
+    }
+
+    // The lone selected item that can be rotated, or null. Everything is
+    // rotatable except lines (a line's angle is already fully expressed by its
+    // two endpoints, so a rotate handle would be redundant), and only one item
+    // at a time — multi-item rotation is a separate problem.
+    type Rotatable = {
+        kind: "shape" | "note" | "text";
+        id: string | number;
+        center: Point;
+        halfHeight: number;
+        rotation: number;
+        original: Shape | Note | TextBox;
+    };
 
     function getRotatableSelected(): Rotatable | null {
         if (selectedTool !== "select" || selectedIds.size !== 1) return null;
         const id = [...selectedIds][0];
         const shape = shapes.find((s) => s.id === id);
-        if (shape && (shape.type === "square" || shape.type === "circle")) {
-            return { kind: "shape", item: shape };
+        if (shape && shape.type !== "line") {
+            return { kind: "shape", id, ...rotatableGeometry(shape), rotation: shape.rotation ?? 0, original: shape };
         }
         const note = notes.find((n) => n.id === id);
-        if (note) return { kind: "note", item: note };
+        if (note) return { kind: "note", id, ...rotatableGeometry(note), rotation: note.rotation ?? 0, original: note };
         const text = texts.find((t) => t.id === id);
-        if (text) return { kind: "text", item: text };
+        if (text) return { kind: "text", id, ...rotatableGeometry(text), rotation: text.rotation ?? 0, original: text };
         return null;
     }
 
-    // Starts a rotate gesture from the handle. Snapshots the item's centre (the
-    // pivot) and its current geometry so the canvas-level pointer-move can set a
+    // Starts a rotate gesture from the handle. Snapshots the pivot (centre) and
+    // the item's current geometry so the canvas-level pointer-move can set a
     // live angle and pointer-up can record the undo pair — same shape as the
     // triangle-vertex drag, which also drives off the canvas move/up handlers.
     function handleRotateHandlePointerDown(
         e: React.PointerEvent<HTMLDivElement>,
         kind: "shape" | "note" | "text",
-        item: BoxShape | Note | TextBox
+        id: string | number,
+        center: Point,
+        original: Shape | Note | TextBox
     ) {
         e.stopPropagation();
-        rotateDrag.current = {
-            kind,
-            id: item.id,
-            center: { x: item.x + item.width / 2, y: item.y + item.height / 2 },
-            original: item,
-        };
+        rotateDrag.current = { kind, id, center, original };
     }
 
     function renderBoxShape(shape: BoxShape) {
@@ -1360,58 +1373,70 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
 
     function renderTriangleShape(shape: TriangleShape) {
         const points = `${shape.p1.x},${shape.p1.y} ${shape.p2.x},${shape.p2.y} ${shape.p3.x},${shape.p3.y}`;
+        const bounds = getBounds(shape);
+        const cx = (bounds.minX + bounds.maxX) / 2;
+        const cy = (bounds.minY + bounds.maxY) / 2;
+        // Rotate the whole group (fill, hit-area, outline, vertices) around the
+        // bbox centre. The points are untouched — this is purely visual, so
+        // bounds/marquee/vertex math stays correct.
+        const rotation = shape.rotation ?? 0;
+        const transform = rotation ? `rotate(${rotation} ${cx} ${cy})` : undefined;
 
         return (
             <svg key={shape.id} className="pointer-events-none absolute inset-0 h-full w-full overflow-visible">
-                {renderDragHitArea(getBounds(shape), (e) => handleTrianglePointerDown(e, shape))}
-                <polygon
-                    points={points}
-                    fill={shape.colour}
-                    stroke="black"
-                    strokeWidth="2"
-                    vectorEffect="non-scaling-stroke"
-                    className="pointer-events-auto"
-                    style={getObjectCursorStyle()}
-                    onPointerDown={(e) => handleTrianglePointerDown(e, shape)}
-                />
-                {renderSelectionOutline(shape.id, getBounds(shape))}
-                {selectedTriangleId === shape.id && (
-                    <>
-                        <circle
-                            cx={shape.p1.x}
-                            cy={shape.p1.y}
-                            r="5"
-                            fill="white"
-                            stroke="black"
-                            strokeWidth="2"
-                            className="pointer-events-auto"
-                            style={getObjectCursorStyle()}
-                            onPointerDown={(e) => handleTriangleVertexPointerDown(e, shape, "p1")}
-                        />
-                        <circle
-                            cx={shape.p2.x}
-                            cy={shape.p2.y}
-                            r="5"
-                            fill="white"
-                            stroke="black"
-                            strokeWidth="2"
-                            className="pointer-events-auto"
-                            style={getObjectCursorStyle()}
-                            onPointerDown={(e) => handleTriangleVertexPointerDown(e, shape, "p2")}
-                        />
-                        <circle
-                            cx={shape.p3.x}
-                            cy={shape.p3.y}
-                            r="5"
-                            fill="white"
-                            stroke="black"
-                            strokeWidth="2"
-                            className="pointer-events-auto"
-                            style={getObjectCursorStyle()}
-                            onPointerDown={(e) => handleTriangleVertexPointerDown(e, shape, "p3")}
-                        />
-                    </>
-                )}
+                <g transform={transform}>
+                    {renderDragHitArea(bounds, (e) => handleTrianglePointerDown(e, shape))}
+                    <polygon
+                        points={points}
+                        fill={shape.colour}
+                        stroke="black"
+                        strokeWidth="2"
+                        vectorEffect="non-scaling-stroke"
+                        className="pointer-events-auto"
+                        style={getObjectCursorStyle()}
+                        onPointerDown={(e) => handleTrianglePointerDown(e, shape)}
+                    />
+                    {renderSelectionOutline(shape.id, bounds)}
+                    {/* Vertex editing is disabled while rotated — dragging a vertex
+                        moves it in unrotated space, which reads as a jump on screen. */}
+                    {selectedTriangleId === shape.id && !shape.rotation && (
+                        <>
+                            <circle
+                                cx={shape.p1.x}
+                                cy={shape.p1.y}
+                                r="5"
+                                fill="white"
+                                stroke="black"
+                                strokeWidth="2"
+                                className="pointer-events-auto"
+                                style={getObjectCursorStyle()}
+                                onPointerDown={(e) => handleTriangleVertexPointerDown(e, shape, "p1")}
+                            />
+                            <circle
+                                cx={shape.p2.x}
+                                cy={shape.p2.y}
+                                r="5"
+                                fill="white"
+                                stroke="black"
+                                strokeWidth="2"
+                                className="pointer-events-auto"
+                                style={getObjectCursorStyle()}
+                                onPointerDown={(e) => handleTriangleVertexPointerDown(e, shape, "p2")}
+                            />
+                            <circle
+                                cx={shape.p3.x}
+                                cy={shape.p3.y}
+                                r="5"
+                                fill="white"
+                                stroke="black"
+                                strokeWidth="2"
+                                className="pointer-events-auto"
+                                style={getObjectCursorStyle()}
+                                onPointerDown={(e) => handleTriangleVertexPointerDown(e, shape, "p3")}
+                            />
+                        </>
+                    )}
+                </g>
             </svg>
         );
     }
@@ -1500,22 +1525,30 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
     }
 
     function renderPenShape(shape: PenShape) {
+        const bounds = getBounds(shape);
+        const cx = (bounds.minX + bounds.maxX) / 2;
+        const cy = (bounds.minY + bounds.maxY) / 2;
+        const rotation = shape.rotation ?? 0;
+        const transform = rotation ? `rotate(${rotation} ${cx} ${cy})` : undefined;
+
         return (
             <svg key={shape.id} className="pointer-events-none absolute inset-0 h-full w-full overflow-visible">
-                {renderDragHitArea(getBounds(shape), (e) => handlePenPointerDown(e, shape))}
-                <polyline
-                    points={shape.points.map((p) => `${p.x},${p.y}`).join(" ")}
-                    fill="none"
-                    stroke={shape.colour}
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    vectorEffect="non-scaling-stroke"
-                    className="pointer-events-auto"
-                    style={getObjectCursorStyle()}
-                    onPointerDown={(e) => handlePenPointerDown(e, shape)}
-                />
-                {renderSelectionOutline(shape.id, getBounds(shape))}
+                <g transform={transform}>
+                    {renderDragHitArea(bounds, (e) => handlePenPointerDown(e, shape))}
+                    <polyline
+                        points={shape.points.map((p) => `${p.x},${p.y}`).join(" ")}
+                        fill="none"
+                        stroke={shape.colour}
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        vectorEffect="non-scaling-stroke"
+                        className="pointer-events-auto"
+                        style={getObjectCursorStyle()}
+                        onPointerDown={(e) => handlePenPointerDown(e, shape)}
+                    />
+                    {renderSelectionOutline(shape.id, bounds)}
+                </g>
             </svg>
         )
     }
@@ -1737,14 +1770,13 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
             {(() => {
                 const rotatable = getRotatableSelected();
                 if (!rotatable) return null;
-                const { kind, item } = rotatable;
-                const cx = item.x + item.width / 2;
-                const cy = item.y + item.height / 2;
-                const rotation = item.rotation ?? 0;
+                const { kind, id, center, halfHeight, rotation, original } = rotatable;
+                const cx = center.x;
+                const cy = center.y;
                 // -90 puts the handle straight up at rotation 0; it then swings
                 // around the centre as rotation changes, staying "above" the shape.
                 const rad = ((rotation - 90) * Math.PI) / 180;
-                const edgeDist = item.height / 2;
+                const edgeDist = halfHeight;
                 const handleDist = edgeDist + 28;
                 const ex = cx + edgeDist * Math.cos(rad);
                 const ey = cy + edgeDist * Math.sin(rad);
@@ -1764,7 +1796,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
                             />
                         </svg>
                         <div
-                            onPointerDown={(e) => handleRotateHandlePointerDown(e, kind, item)}
+                            onPointerDown={(e) => handleRotateHandlePointerDown(e, kind, id, center, original)}
                             className="absolute rounded-full border border-blue-500 bg-white shadow-sm"
                             style={{
                                 left: hx,

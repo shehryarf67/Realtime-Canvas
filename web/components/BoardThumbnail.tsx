@@ -46,7 +46,11 @@ function renderShape(shape: Shape) {
                     transform={rotateAround(shape.rotation, shape.x + shape.width / 2, shape.y + shape.height / 2)}
                 />
             );
-        case "triangle":
+        case "triangle": {
+            const xs = [shape.p1.x, shape.p2.x, shape.p3.x];
+            const ys = [shape.p1.y, shape.p2.y, shape.p3.y];
+            const cx = (Math.min(...xs) + Math.max(...xs)) / 2;
+            const cy = (Math.min(...ys) + Math.max(...ys)) / 2;
             return (
                 <polygon
                     key={shape.id}
@@ -54,8 +58,10 @@ function renderShape(shape: Shape) {
                     fill={shape.colour}
                     stroke="#171717"
                     strokeWidth={2}
+                    transform={rotateAround(shape.rotation, cx, cy)}
                 />
             );
+        }
         case "line":
             return (
                 <line
@@ -68,7 +74,11 @@ function renderShape(shape: Shape) {
                     strokeWidth={2}
                 />
             );
-        case "pen":
+        case "pen": {
+            const xs = shape.points.map((p) => p.x);
+            const ys = shape.points.map((p) => p.y);
+            const cx = (Math.min(...xs) + Math.max(...xs)) / 2;
+            const cy = (Math.min(...ys) + Math.max(...ys)) / 2;
             return (
                 <polyline
                     key={shape.id}
@@ -76,8 +86,10 @@ function renderShape(shape: Shape) {
                     fill="none"
                     stroke={shape.colour}
                     strokeWidth={2}
+                    transform={rotateAround(shape.rotation, cx, cy)}
                 />
             );
+        }
         default:
             return null;
     }

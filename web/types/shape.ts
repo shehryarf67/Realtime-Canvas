@@ -45,6 +45,9 @@ export type TriangleShape = {
   p3: Point;
   colour: string;
   zIndex: number;
+  // Purely a visual transform pivoting on the bounding-box centre — the points
+  // themselves stay put, so bounds/marquee/vertex math is unaffected.
+  rotation?: number;
 };
 
 export type LineShape = {
@@ -58,7 +61,7 @@ export type LineShape = {
   zIndex: number;
 };
 
-export type PenShape = { id: string; type: "pen"; points: Point[]; colour: string; zIndex: number }
+export type PenShape = { id: string; type: "pen"; points: Point[]; colour: string; zIndex: number; rotation?: number }
 
 export type Shape = BoxShape | TriangleShape | LineShape | PenShape;
 
