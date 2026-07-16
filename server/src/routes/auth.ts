@@ -1,23 +1,54 @@
 import { Router } from "express";
+import { rateLimit } from "express-rate-limit";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
 import { users } from "../db.js";
+import { JWT_SECRET, CLIENT_ORIGIN, AUTH_COOKIE_NAME, AUTH_COOKIE_OPTIONS } from "../config.js";
 import { isValidEmail, isValidPassword, isNonEmptyString, MIN_PASSWORD_LENGTH } from "../lib/validation.js";
 import { sendPasswordResetEmail } from "../lib/mailer.js";
 
 const router = Router();
 
-const JWT_SECRET = process.env.JWT_SECRET!;
 const SALT_ROUNDS = 10;
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour
-const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || "http://localhost:3000";
+const AUTH_COOKIE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+// Per-IP limits on the credential endpoints. Without these, login is free to
+// brute-force and forgot-password can be used to bomb someone's inbox.
+// /me and /logout stay unlimited — they're harmless and called on every page.
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  // Only failed attempts count toward the limit, so a user who logs in and
+  // out repeatedly (or a shared office IP) isn't locked out by successes.
+  skipSuccessfulRequests: true,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many login attempts. Try again in a few minutes." },
+});
+
+const signupLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many accounts created from this address. Try again later." },
+});
+
+const passwordResetLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many password reset requests. Try again later." },
+});
 
 function hashToken(token: string): string {
   return crypto.createHash("sha256").update(token).digest("hex");
 }
 
-router.post("/signup", async (req, res) => {
+router.post("/signup", signupLimiter, async (req, res) => {
   const { name, email, password } = req.body;
 
   if (!isNonEmptyString(name)) {
@@ -58,17 +89,17 @@ router.post("/signup", async (req, res) => {
     { expiresIn: "7d" }
   );
 
-  // Send the token as an HTTP-only cookie so JS can't read it
-  res.cookie("token", token, {
-    httpOnly: true,
-    sameSite: "lax",
-    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days in milliseconds
+  // Send the token as an HTTP-only cookie so JS can't read it. Flags come
+  // from config: Secure + SameSite=None in production (cross-site), Lax in dev.
+  res.cookie(AUTH_COOKIE_NAME, token, {
+    ...AUTH_COOKIE_OPTIONS,
+    maxAge: AUTH_COOKIE_MAX_AGE_MS,
   });
 
   res.status(201).json({ userId: result.insertedId, name, email });
 });
 
-router.post("/login", async (req, res) => {
+router.post("/login", loginLimiter, async (req, res) => {
   const { email, password } = req.body;
 
   // Find the user by email
@@ -92,10 +123,9 @@ router.post("/login", async (req, res) => {
     { expiresIn: "7d" }
   );
 
-  res.cookie("token", token, {
-    httpOnly: true,
-    sameSite: "lax",
-    maxAge: 7 * 24 * 60 * 60 * 1000,
+  res.cookie(AUTH_COOKIE_NAME, token, {
+    ...AUTH_COOKIE_OPTIONS,
+    maxAge: AUTH_COOKIE_MAX_AGE_MS,
   });
 
   res.status(200).json({ userId: user._id, name: user.name, email: user.email });
@@ -117,11 +147,15 @@ router.get("/me", (req, res) => {
 });
 
 router.post("/logout", (_req, res) => {
-  res.clearCookie("token");
+  // clearCookie must send the same flags the cookie was set with — a
+  // Secure/SameSite=None cookie is a different cookie from the browser's
+  // point of view, and clearing without the flags silently does nothing
+  // in production.
+  res.clearCookie(AUTH_COOKIE_NAME, AUTH_COOKIE_OPTIONS);
   res.status(200).json({ ok: true });
 });
 
-router.post("/forgot-password", async (req, res) => {
+router.post("/forgot-password", passwordResetLimiter, async (req, res) => {
   const { email } = req.body;
   if (!isValidEmail(email)) {
     res.status(400).json({ error: "Enter a valid email address" });
@@ -159,7 +193,7 @@ router.post("/forgot-password", async (req, res) => {
   res.status(200).json({ ok: true });
 });
 
-router.post("/reset-password", async (req, res) => {
+router.post("/reset-password", passwordResetLimiter, async (req, res) => {
   const { token, password } = req.body;
   if (!isNonEmptyString(token)) {
     res.status(400).json({ error: "Reset token is required" });

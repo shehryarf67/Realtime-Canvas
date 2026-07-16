@@ -2,9 +2,7 @@ import type { Server as HTTPServer } from "http";
 import { Server } from "socket.io";
 import jwt from "jsonwebtoken";
 import { boards, items, type Id, type Kind } from "./db.js";
-
-const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || "http://localhost:3000";
-const JWT_SECRET = process.env.JWT_SECRET!;
+import { CLIENT_ORIGIN, JWT_SECRET, AUTH_COOKIE_NAME } from "./config.js";
 
 // Socket.IO's handshake never passes through Express's cookie-parser
 // middleware, so the "token" cookie has to be pulled out of the raw
@@ -45,7 +43,7 @@ export function initSocketServer(httpServer: HTTPServer): Server {
   ioInstance = io;
 
   io.use((socket, next) => {
-    const token = readCookie(socket.handshake.headers.cookie, "token");
+    const token = readCookie(socket.handshake.headers.cookie, AUTH_COOKIE_NAME);
     if (!token) {
       next(new Error("Authentication required"));
       return;

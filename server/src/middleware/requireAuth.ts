@@ -1,7 +1,6 @@
 import type { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
-
-const JWT_SECRET = process.env.JWT_SECRET!;
+import { JWT_SECRET } from "../config.js";
 
 export default function requireAuth(req: Request, res: Response, next: NextFunction) {
     const token = req.cookies.token;

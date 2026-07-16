@@ -1,4 +1,5 @@
 import { MongoClient, type Collection } from "mongodb";
+import { MONGODB_URI } from "./config.js";
 
 export type Id = string | number;
 export type Kind = "shape" | "note" | "text";
@@ -33,12 +34,8 @@ export type Board = {
   lastEditedAt: number;
 }
 
-const uri = process.env.MONGODB_URI;
-if (!uri) {
-  throw new Error("MONGODB_URI is not set. Add it to server/.env");
-}
-
-const client = new MongoClient(uri);
+// Presence is validated (with a clear error) in config.ts at startup.
+const client = new MongoClient(MONGODB_URI);
 
 let itemsCollection: Collection<CanvasItemDoc> | null = null;
 let usersCollection: Collection<User> | null = null;
@@ -54,6 +51,12 @@ export async function connectToDatabase(): Promise<void> {
   boardsCollection = db.collection<Board>("boards");
   await boardsCollection.createIndex({ roomId: 1 }, { unique: true });
   console.log("connected to MongoDB");
+}
+
+// Used by the graceful-shutdown handler so in-flight writes finish cleanly
+// when the host sends SIGTERM on redeploy/scale-down.
+export async function closeDatabase(): Promise<void> {
+  await client.close();
 }
 
 export function items(): Collection<CanvasItemDoc> {
