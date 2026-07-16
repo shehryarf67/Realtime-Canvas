@@ -177,6 +177,10 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
     const [isDraggingItem, setIsDraggingItem] = useState(false);
     const [selectedTriangleId, setSelectedTriangleId] = useState<string | null>(null);
     const [selectedIds, setSelectedIds] = useState<Set<string | number>>(new Set());
+    // The note/text currently in text-editing mode (entered via double-click).
+    // Everything else keeps its textarea non-interactive so a plain click
+    // selects the item (and a canvas drag can't select the text inside it).
+    const [editingId, setEditingId] = useState<string | number | null>(null);
     const marqueeStart = useRef<Point | null>(null);
     const [marqueeRect, setMarqueeRect] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
     const { socket } = useSocket();
@@ -535,6 +539,34 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
         shapesRef.current = shapes;
     }, [shapes]);
 
+    // Focus the textarea that just entered edit mode. Centralised here (rather
+    // than in each double-click handler) so it also fires for freshly created
+    // notes/texts, whose textarea only exists after the next render.
+    useEffect(() => {
+        if (editingId == null) return;
+        const el = canvasRef.current?.querySelector(
+            `textarea[data-item-id="${editingId}"]`
+        ) as HTMLTextAreaElement | null;
+        el?.focus();
+    }, [editingId]);
+
+    // A pointer drag on the canvas (drawing a pen stroke, marquee-selecting)
+    // makes the browser start a *document* text selection anchored on the
+    // canvas, which then sweeps across the text inside notes/text boxes as you
+    // move — the flicker. user-select:none doesn't stop this for form controls,
+    // so we cancel the gesture at its source: selectstart. We still allow it
+    // when a textarea is genuinely being edited (its own text selection).
+    useEffect(() => {
+        const el = canvasRef.current;
+        if (!el) return;
+        const onSelectStart = (e: Event) => {
+            if (document.activeElement?.tagName === "TEXTAREA") return;
+            e.preventDefault();
+        };
+        el.addEventListener("selectstart", onSelectStart);
+        return () => el.removeEventListener("selectstart", onSelectStart);
+    }, []);
+
     // Keep the canvas scaled to whatever width its container currently has.
     useEffect(() => {
         const wrapper = wrapperRef.current;
@@ -728,6 +760,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
         }
         else {
             setSelectedTriangleId(null);
+            setEditingId(null); // Leave text-edit mode when clicking the canvas
             (document.activeElement as HTMLElement)?.blur(); // Remove focus from any active textarea when clicking on the canvas
         }
         if (selectedTool === "select") {
@@ -755,6 +788,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
             // We use the new array due to React's immutability
             broadcast({ kind: "text", action: "add", payload: newText });
             pushHistory({ kind: "text", action: "add", payload: newText }, { kind: "text", action: "delete", id: newText.id });
+            setEditingId(newText.id); // Drop straight into editing the new text
 
             return;
         }
@@ -773,6 +807,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
             setNotes((prev) => [...prev, newNote]);
             broadcast({ kind: "note", action: "add", payload: newNote });
             pushHistory({ kind: "note", action: "add", payload: newNote }, { kind: "note", action: "delete", id: newNote.id });
+            setEditingId(newNote.id); // Drop straight into editing the new note
             return;
         }
         if (selectedTool === "pen") {
@@ -872,7 +907,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
                 prev.map((s) =>
                     s.id === id && s.type === "triangle"
                         ? { ...s, [vertex]: current }
-                        : s 
+                        : s
                 )
             );
             return;
@@ -979,7 +1014,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
                         p3: { x: right, y: bottom },
                     } as Shape;
                 }
-                
+
                 if (s.type === "pen") {
                     return { ...s, points: [...s.points, { x: currentX, y: currentY }] } as Shape;
                 }
@@ -1463,15 +1498,24 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
     }
 
     function renderNote(note: Note) {
+        const editing = editingId === note.id;
         return (
             <textarea
                 value={note.text}
+                data-item-id={note.id}
+                readOnly={!editing}
+                tabIndex={editing ? 0 : -1}
                 onPointerDown={(e) => {
-                    e.stopPropagation();
                     if (selectedTool === "eraser") {
+                        e.stopPropagation();
                         deleteNote(note.id);
+                        return;
                     }
+                    // While editing, stop the event reaching Rnd so click-dragging
+                    // to select text doesn't move the note.
+                    if (editing) e.stopPropagation();
                 }}
+                onBlur={() => setEditingId((cur) => (cur === note.id ? null : cur))}
                 onChange={(e) => {
                     const value = e.target.value;
                     const updated = { ...note, text: value };
@@ -1483,26 +1527,36 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
                     );
                     broadcast({ kind: "note", action: "update", payload: updated });
                 }}
-                className="h-full w-full cursor-move resize-none p-2 text-sm outline-none focus:cursor-text"
+                className={`h-full w-full resize-none p-2 text-sm outline-none ${editing ? "" : "select-none"}`}
                 style={{
                     backgroundColor: note.color,
-                    ...(selectedTool === "eraser" ? getObjectCursorStyle() : {}),
-                    ...(isDraggingItem ? { cursor: "move" } : {}),
+                    // Non-interactive until editing: clicks fall through to the
+                    // Rnd wrapper (select + drag) and canvas drags can't select
+                    // the text inside.
+                    pointerEvents: editing ? "auto" : "none",
+                    cursor: editing ? "text" : "move",
                 }}
             />
         )
     }
 
     function renderText(textBox: TextBox) {
+        const editing = editingId === textBox.id;
         return (
             <textarea
                 value={textBox.text}
+                data-item-id={textBox.id}
+                readOnly={!editing}
+                tabIndex={editing ? 0 : -1}
                 onPointerDown={(e) => {
-                    e.stopPropagation();
                     if (selectedTool === "eraser") {
+                        e.stopPropagation();
                         deleteText(textBox.id);
+                        return;
                     }
+                    if (editing) e.stopPropagation();
                 }}
+                onBlur={() => setEditingId((cur) => (cur === textBox.id ? null : cur))}
                 onChange={(e) => {
                     const value = e.target.value;
                     const updated = { ...textBox, text: value };
@@ -1514,11 +1568,11 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
                     );
                     broadcast({ kind: "text", action: "update", payload: updated });
                 }}
-                className="h-full w-full cursor-move resize-none bg-transparent p-1 text-base outline-none focus:cursor-text"
+                className={`h-full w-full resize-none bg-transparent p-1 text-base outline-none ${editing ? "" : "select-none"}`}
                 style={{
                     color: textBox.colour,
-                    ...(selectedTool === "eraser" ? getObjectCursorStyle() : {}),
-                    ...(isDraggingItem ? { cursor: "move" } : {}),
+                    pointerEvents: editing ? "auto" : "none",
+                    cursor: editing ? "text" : "move",
                 }}
             />
         );
@@ -1683,6 +1737,10 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
                 <div
                     className={`h-full w-full ${selectedIds.has(note.id) ? "ring-2 ring-blue-500 ring-offset-2" : ""}`}
                     style={{ ...getObjectCursorStyle(), transform: `rotate(${note.rotation ?? 0}deg)`, transformOrigin: "center center" }}
+                    onDoubleClick={() => {
+                        if (selectedTool !== "select") return;
+                        setEditingId(note.id);
+                    }}
                 >
                     {renderNote(note)}
                 </div>
@@ -1745,6 +1803,10 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
                 <div
                     className={`h-full w-full ${selectedIds.has(textBox.id) ? "ring-2 ring-blue-500 ring-offset-2" : ""}`}
                     style={{ ...getObjectCursorStyle(), transform: `rotate(${textBox.rotation ?? 0}deg)`, transformOrigin: "center center" }}
+                    onDoubleClick={() => {
+                        if (selectedTool !== "select") return;
+                        setEditingId(textBox.id);
+                    }}
                 >
                     {renderText(textBox)}
                 </div>
@@ -1773,119 +1835,119 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
             className="mt-4 w-full overflow-hidden border"
             style={{ aspectRatio: `${CANVAS_WIDTH} / ${CANVAS_HEIGHT}` }}
         >
-        <div
-            ref={canvasRef}
-            onPointerDown={handlePointerDown}
-            onPointerMove={handlePointerMove}
-            onPointerUp={handlePointerUp}
-            onPointerLeave={handlePointerUp}
-            className="relative origin-top-left"
-            style={{
-                width: CANVAS_WIDTH,
-                height: CANVAS_HEIGHT,
-                transform: `scale(${scale})`,
-                ...getCanvasCursorStyle(),
-            }}
-        >
-            {canvasItems.map((entry) => {
-                switch (entry.kind) {
-                    case "shape":
-                        return renderShapeItem(entry.item);
-                    case "note":
-                        return renderNoteItem(entry.item);
-                    case "text":
-                        return renderTextItem(entry.item);
-                }
-            })}
-            {(() => {
-                const rotatable = getRotatableSelected();
-                if (!rotatable) return null;
-                const { kind, id, center, halfHeight, rotation, original } = rotatable;
-                const cx = center.x;
-                const cy = center.y;
-                // -90 puts the handle straight up at rotation 0; it then swings
-                // around the centre as rotation changes, staying "above" the shape.
-                const rad = ((rotation - 90) * Math.PI) / 180;
-                const edgeDist = halfHeight;
-                const handleDist = edgeDist + 28;
-                const ex = cx + edgeDist * Math.cos(rad);
-                const ey = cy + edgeDist * Math.sin(rad);
-                const hx = cx + handleDist * Math.cos(rad);
-                const hy = cy + handleDist * Math.sin(rad);
-                return (
-                    <>
-                        <svg className="pointer-events-none absolute inset-0 h-full w-full overflow-visible">
-                            <line
-                                x1={ex}
-                                y1={ey}
-                                x2={hx}
-                                y2={hy}
-                                stroke="#3b82f6"
-                                strokeWidth="1"
-                                vectorEffect="non-scaling-stroke"
+            <div
+                ref={canvasRef}
+                onPointerDown={handlePointerDown}
+                onPointerMove={handlePointerMove}
+                onPointerUp={handlePointerUp}
+                onPointerLeave={handlePointerUp}
+                className="relative origin-top-left"
+                style={{
+                    width: CANVAS_WIDTH,
+                    height: CANVAS_HEIGHT,
+                    transform: `scale(${scale})`,
+                    ...getCanvasCursorStyle(),
+                }}
+            >
+                {canvasItems.map((entry) => {
+                    switch (entry.kind) {
+                        case "shape":
+                            return renderShapeItem(entry.item);
+                        case "note":
+                            return renderNoteItem(entry.item);
+                        case "text":
+                            return renderTextItem(entry.item);
+                    }
+                })}
+                {(() => {
+                    const rotatable = getRotatableSelected();
+                    if (!rotatable) return null;
+                    const { kind, id, center, halfHeight, rotation, original } = rotatable;
+                    const cx = center.x;
+                    const cy = center.y;
+                    // -90 puts the handle straight up at rotation 0; it then swings
+                    // around the centre as rotation changes, staying "above" the shape.
+                    const rad = ((rotation - 90) * Math.PI) / 180;
+                    const edgeDist = halfHeight;
+                    const handleDist = edgeDist + 28;
+                    const ex = cx + edgeDist * Math.cos(rad);
+                    const ey = cy + edgeDist * Math.sin(rad);
+                    const hx = cx + handleDist * Math.cos(rad);
+                    const hy = cy + handleDist * Math.sin(rad);
+                    return (
+                        <>
+                            <svg className="pointer-events-none absolute inset-0 h-full w-full overflow-visible">
+                                <line
+                                    x1={ex}
+                                    y1={ey}
+                                    x2={hx}
+                                    y2={hy}
+                                    stroke="#3b82f6"
+                                    strokeWidth="1"
+                                    vectorEffect="non-scaling-stroke"
+                                />
+                            </svg>
+                            <div
+                                onPointerDown={(e) => handleRotateHandlePointerDown(e, kind, id, center, original)}
+                                className="absolute rounded-full border border-blue-500 bg-white shadow-sm"
+                                style={{
+                                    left: hx,
+                                    top: hy,
+                                    width: 14,
+                                    height: 14,
+                                    transform: "translate(-50%, -50%)",
+                                    cursor: "grab",
+                                    touchAction: "none",
+                                }}
                             />
-                        </svg>
+                        </>
+                    );
+                })()}
+                {Array.from(userMap.entries()).map(([userId, cursor]) => {
+                    const colour = getCursorColour(userId);
+                    return (
                         <div
-                            onPointerDown={(e) => handleRotateHandlePointerDown(e, kind, id, center, original)}
-                            className="absolute rounded-full border border-blue-500 bg-white shadow-sm"
+                            key={userId}
                             style={{
-                                left: hx,
-                                top: hy,
-                                width: 14,
-                                height: 14,
-                                transform: "translate(-50%, -50%)",
-                                cursor: "grab",
-                                touchAction: "none",
+                                position: "absolute",
+                                left: cursor.x,
+                                top: cursor.y,
+                                pointerEvents: "none",
                             }}
-                        />
-                    </>
-                );
-            })()}
-            {Array.from(userMap.entries()).map(([userId, cursor]) => {
-                const colour = getCursorColour(userId);
-                return (
+                        >
+                            <svg
+                                width="16"
+                                height="16"
+                                viewBox="0 0 16 16"
+                                style={{ filter: `drop-shadow(0 0 6px ${colour})` }}
+                            >
+                                <path
+                                    d="M1 1 L1 12 L4.2 9 L6.4 14 L8.4 13.1 L6.2 8.2 L11 8 Z"
+                                    fill={colour}
+                                />
+                            </svg>
+                            <span
+                                className="ml-3 inline-block px-2 py-0.5 text-[11px] font-medium text-white"
+                                style={{ backgroundColor: colour }}
+                            >
+                                {cursor.name}
+                            </span>
+                        </div>
+                    );
+                })}
+                {marqueeRect && (
                     <div
-                        key={userId}
+                        className="absolute border border-blue-500 bg-blue-500/10"
                         style={{
-                            position: "absolute",
-                            left: cursor.x,
-                            top: cursor.y,
+                            left: marqueeRect.x,
+                            top: marqueeRect.y,
+                            width: marqueeRect.width,
+                            height: marqueeRect.height,
                             pointerEvents: "none",
                         }}
-                    >
-                        <svg
-                            width="16"
-                            height="16"
-                            viewBox="0 0 16 16"
-                            style={{ filter: `drop-shadow(0 0 6px ${colour})` }}
-                        >
-                            <path
-                                d="M1 1 L1 12 L4.2 9 L6.4 14 L8.4 13.1 L6.2 8.2 L11 8 Z"
-                                fill={colour}
-                            />
-                        </svg>
-                        <span
-                            className="ml-3 inline-block px-2 py-0.5 text-[11px] font-medium text-white"
-                            style={{ backgroundColor: colour }}
-                        >
-                            {cursor.name}
-                        </span>
-                    </div>
-                );
-            })}
-            {marqueeRect && (
-                <div
-                    className="absolute border border-blue-500 bg-blue-500/10"
-                    style={{
-                        left: marqueeRect.x,
-                        top: marqueeRect.y,
-                        width: marqueeRect.width,
-                        height: marqueeRect.height,
-                        pointerEvents: "none",
-                    }}
-                />
-            )}
-        </div>
+                    />
+                )}
+            </div>
         </div>
     )
 }
