@@ -36,12 +36,23 @@ const signupLimiter = rateLimit({
   message: { error: "Too many accounts created from this address. Try again later." },
 });
 
-const passwordResetLimiter = rateLimit({
+// Separate instances (not one shared limiter): forgot-password and
+// reset-password would otherwise drain a single per-IP bucket together,
+// and a user who requested two emails couldn't complete a legitimate reset.
+const forgotPasswordLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
-  limit: 5,
+  limit: 5, // each one sends an email — the abusable part, so strictest
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: "Too many password reset requests. Try again later." },
+});
+
+const resetPasswordLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 10, // tokens are 256-bit — this guards volume, not brute force
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many attempts. Try again later." },
 });
 
 function hashToken(token: string): string {
@@ -155,7 +166,7 @@ router.post("/logout", (_req, res) => {
   res.status(200).json({ ok: true });
 });
 
-router.post("/forgot-password", passwordResetLimiter, async (req, res) => {
+router.post("/forgot-password", forgotPasswordLimiter, async (req, res) => {
   const { email } = req.body;
   if (!isValidEmail(email)) {
     res.status(400).json({ error: "Enter a valid email address" });
@@ -193,7 +204,7 @@ router.post("/forgot-password", passwordResetLimiter, async (req, res) => {
   res.status(200).json({ ok: true });
 });
 
-router.post("/reset-password", passwordResetLimiter, async (req, res) => {
+router.post("/reset-password", resetPasswordLimiter, async (req, res) => {
   const { token, password } = req.body;
   if (!isNonEmptyString(token)) {
     res.status(400).json({ error: "Reset token is required" });
