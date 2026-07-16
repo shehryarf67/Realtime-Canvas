@@ -1534,7 +1534,21 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
         return (
             <svg key={shape.id} className="pointer-events-none absolute inset-0 h-full w-full overflow-visible">
                 <g transform={transform}>
-                    {renderDragHitArea(bounds, (e) => handlePenPointerDown(e, shape))}
+                    {/* Hit-area follows the stroke, not the bounding box — a fat
+                        transparent polyline. Filling the whole bbox (as a rect
+                        would) covers text/other items sitting inside the pen's
+                        span and steals their clicks. */}
+                    <polyline
+                        points={shape.points.map((p) => `${p.x},${p.y}`).join(" ")}
+                        fill="none"
+                        stroke="transparent"
+                        strokeWidth="14"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        className="pointer-events-auto"
+                        style={getObjectCursorStyle()}
+                        onPointerDown={(e) => handlePenPointerDown(e, shape)}
+                    />
                     <polyline
                         points={shape.points.map((p) => `${p.x},${p.y}`).join(" ")}
                         fill="none"
@@ -1543,9 +1557,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
                         strokeLinecap="round"
                         strokeLinejoin="round"
                         vectorEffect="non-scaling-stroke"
-                        className="pointer-events-auto"
-                        style={getObjectCursorStyle()}
-                        onPointerDown={(e) => handlePenPointerDown(e, shape)}
+                        className="pointer-events-none"
                     />
                     {renderSelectionOutline(shape.id, bounds)}
                 </g>
@@ -1587,6 +1599,14 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
                         handleShapeSelect(e, shape.id);
                         startGroupDrag(e, shape.id);
                     }
+                }}
+                onDrag={(e, data) => {
+                    // Live position write so the rotate handle (rendered from
+                    // state, outside Rnd) tracks the shape during the drag
+                    // instead of jumping to the new spot only on release.
+                    setShapes((prev) =>
+                        prev.map((s) => (s.id === shape.id ? { ...s, x: data.x, y: data.y } : s))
+                    );
                 }}
                 onDragStop={(e, data) => {
                     const updated = { ...shape, x: data.x, y: data.y };
@@ -1644,6 +1664,11 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
                     }
                 }}
                 onDragStart={() => setIsDraggingItem(true)}
+                onDrag={(e, data) => {
+                    setNotes((prev) =>
+                        prev.map((n) => (n.id === note.id ? { ...n, x: data.x, y: data.y } : n))
+                    );
+                }}
                 onDragStop={(e, data) => {
                     setIsDraggingItem(false);
                     const updated = { ...note, x: data.x, y: data.y };
@@ -1686,6 +1711,11 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
                     }
                 }}
                 onDragStart={() => setIsDraggingItem(true)}
+                onDrag={(e, data) => {
+                    setTexts((prev) =>
+                        prev.map((text) => (text.id === textBox.id ? { ...text, x: data.x, y: data.y } : text))
+                    );
+                }}
                 onDragStop={(e, data) => {
                     setIsDraggingItem(false);
                     const updated = { ...textBox, x: data.x, y: data.y };
