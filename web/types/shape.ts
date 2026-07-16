@@ -17,6 +17,9 @@ type BoxShapeBase = {
   height: number;
   colour: string;
   zIndex: number;
+  // Degrees, clockwise, pivoting on the shape's own centre. Optional so every
+  // item persisted before rotation existed reads back as unrotated (?? 0).
+  rotation?: number;
 };
 
 export type SquareShape = BoxShapeBase & {
@@ -68,6 +71,7 @@ export interface Note {
   width: number,
   height: number,
   zIndex: number,
+  rotation?: number,
 }
 
 export type TextBox = {
@@ -79,6 +83,7 @@ export type TextBox = {
   width: number;
   height: number;
   zIndex: number;
+  rotation?: number;
 };
 
 export type CanvasMessage =

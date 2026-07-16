@@ -10,6 +10,12 @@ import { getBoardState } from "@/lib/boards";
 const VIEW_W = 1600;
 const VIEW_H = 900;
 
+// SVG rotate() takes degrees and a pivot point — matching the CSS
+// "rotate around centre" the live editor applies to these same items.
+function rotateAround(rotation: number | undefined, cx: number, cy: number): string | undefined {
+    return rotation ? `rotate(${rotation} ${cx} ${cy})` : undefined;
+}
+
 function renderShape(shape: Shape) {
     switch (shape.type) {
         case "square":
@@ -23,6 +29,7 @@ function renderShape(shape: Shape) {
                     fill={shape.colour}
                     stroke="#171717"
                     strokeWidth={2}
+                    transform={rotateAround(shape.rotation, shape.x + shape.width / 2, shape.y + shape.height / 2)}
                 />
             );
         case "circle":
@@ -36,6 +43,7 @@ function renderShape(shape: Shape) {
                     fill={shape.colour}
                     stroke="#171717"
                     strokeWidth={2}
+                    transform={rotateAround(shape.rotation, shape.x + shape.width / 2, shape.y + shape.height / 2)}
                 />
             );
         case "triangle":
@@ -77,7 +85,7 @@ function renderShape(shape: Shape) {
 
 function renderNote(note: Note) {
     return (
-        <g key={note.id}>
+        <g key={note.id} transform={rotateAround(note.rotation, note.x + note.width / 2, note.y + note.height / 2)}>
             <rect
                 x={note.x}
                 y={note.y}
@@ -105,6 +113,7 @@ function renderText(textBox: TextBox) {
             y={textBox.y + 20}
             fontSize={16}
             fill={textBox.colour}
+            transform={rotateAround(textBox.rotation, textBox.x + textBox.width / 2, textBox.y + textBox.height / 2)}
         >
             {textBox.text.split("\n")[0].slice(0, 28)}
         </text>

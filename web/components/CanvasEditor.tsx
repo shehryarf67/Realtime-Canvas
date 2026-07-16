@@ -160,6 +160,15 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
         pointerStart: Point;
         items: GroupDragEntry[];
     } | null>(null);
+    // In-progress rotation of a single rectangle item. center is the pivot in
+    // logical canvas coords; original is the pre-rotation snapshot used to build
+    // the undo entry when the gesture ends.
+    const rotateDrag = useRef<{
+        kind: "shape" | "note" | "text";
+        id: string | number;
+        center: Point;
+        original: BoxShape | Note | TextBox;
+    } | null>(null);
     const shapesRef = useRef<Shape[]>([]);
     const lastEmitTimeRef = useRef<number>(0); // Tells when the cursor was last emitted to the server. This is used to throttle the cursor move events.
     const emitInterval = 30; // milliseconds
@@ -795,6 +804,25 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
     }
 
     function handlePointerMove(e: React.PointerEvent<HTMLDivElement>) {
+        if (rotateDrag.current) {
+            const current = getCanvasPoint(e.clientX, e.clientY);
+            const { kind, id, center } = rotateDrag.current;
+            // atan2 gives the angle from centre to pointer measured from the +x
+            // axis; +90 rotates the frame so 0° means "handle pointing straight
+            // up". Shift snaps to 15° increments.
+            const raw = (Math.atan2(current.y - center.y, current.x - center.x) * 180) / Math.PI + 90;
+            const angle = e.shiftKey ? Math.round(raw / 15) * 15 : raw;
+
+            if (kind === "shape") {
+                setShapes((prev) => prev.map((s) => (s.id === id ? { ...s, rotation: angle } : s)));
+            } else if (kind === "note") {
+                setNotes((prev) => prev.map((n) => (n.id === id ? { ...n, rotation: angle } : n)));
+            } else {
+                setTexts((prev) => prev.map((t) => (t.id === id ? { ...t, rotation: angle } : t)));
+            }
+            return;
+        }
+
         if (marqueeStart.current) {
             const current = getCanvasPoint(e.clientX, e.clientY);
             const start = marqueeStart.current;
@@ -968,6 +996,35 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
     }
 
     function handlePointerUp() {
+        if (rotateDrag.current) {
+            const { kind, id, original } = rotateDrag.current;
+            rotateDrag.current = null;
+
+            if (kind === "shape") {
+                const current = shapesRef.current.find((s) => s.id === id);
+                if (current) {
+                    const doMessage: CanvasMessage = { kind: "shape", action: "update", payload: current };
+                    broadcast(doMessage);
+                    pushHistory(doMessage, { kind: "shape", action: "update", payload: original as Shape });
+                }
+            } else if (kind === "note") {
+                const current = notes.find((n) => n.id === id);
+                if (current) {
+                    const doMessage: CanvasMessage = { kind: "note", action: "update", payload: current };
+                    broadcast(doMessage);
+                    pushHistory(doMessage, { kind: "note", action: "update", payload: original as Note });
+                }
+            } else {
+                const current = texts.find((t) => t.id === id);
+                if (current) {
+                    const doMessage: CanvasMessage = { kind: "text", action: "update", payload: current };
+                    broadcast(doMessage);
+                    pushHistory(doMessage, { kind: "text", action: "update", payload: original as TextBox });
+                }
+            }
+            return;
+        }
+
         if (marqueeStart.current) {
             const rect = marqueeRect;
             marqueeStart.current = null;
@@ -1205,6 +1262,47 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
             id: shape.id,
             vertex,
             vertexStart: shape[vertex],
+        };
+    }
+
+    // Only box shapes (square/circle), notes, and texts are rotatable, and only
+    // one at a time — lines/triangles/pen encode orientation in their points,
+    // and multi-item rotation is a separate problem. Returns the lone selected
+    // rectangle item (tagged with its kind) or null.
+    type Rotatable =
+        | { kind: "shape"; item: BoxShape }
+        | { kind: "note"; item: Note }
+        | { kind: "text"; item: TextBox };
+
+    function getRotatableSelected(): Rotatable | null {
+        if (selectedTool !== "select" || selectedIds.size !== 1) return null;
+        const id = [...selectedIds][0];
+        const shape = shapes.find((s) => s.id === id);
+        if (shape && (shape.type === "square" || shape.type === "circle")) {
+            return { kind: "shape", item: shape };
+        }
+        const note = notes.find((n) => n.id === id);
+        if (note) return { kind: "note", item: note };
+        const text = texts.find((t) => t.id === id);
+        if (text) return { kind: "text", item: text };
+        return null;
+    }
+
+    // Starts a rotate gesture from the handle. Snapshots the item's centre (the
+    // pivot) and its current geometry so the canvas-level pointer-move can set a
+    // live angle and pointer-up can record the undo pair — same shape as the
+    // triangle-vertex drag, which also drives off the canvas move/up handlers.
+    function handleRotateHandlePointerDown(
+        e: React.PointerEvent<HTMLDivElement>,
+        kind: "shape" | "note" | "text",
+        item: BoxShape | Note | TextBox
+    ) {
+        e.stopPropagation();
+        rotateDrag.current = {
+            kind,
+            id: item.id,
+            center: { x: item.x + item.width / 2, y: item.y + item.height / 2 },
+            original: item,
         };
     }
 
@@ -1446,7 +1544,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
                 bounds="parent"
                 scale={scale}
                 disableDragging={isDrawing || isGroupDragEligible(shape.id)}
-                enableResizing={!isDrawing}
+                enableResizing={!isDrawing && !shape.rotation}
                 onPointerDown={(e: React.PointerEvent<HTMLElement>) => {
                     if (selectedTool === "eraser") {
                         e.stopPropagation();
@@ -1482,7 +1580,10 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
                     pushHistory(doMessage, { kind: "shape", action: "update", payload: shape });
                 }}
             >
-                <div className={`h-full w-full ${selectedIds.has(shape.id) ? "ring-2 ring-blue-500 ring-offset-2" : ""}`} style={getObjectCursorStyle()}>
+                <div
+                    className={`h-full w-full ${selectedIds.has(shape.id) ? "ring-2 ring-blue-500 ring-offset-2" : ""}`}
+                    style={{ ...getObjectCursorStyle(), transform: `rotate(${shape.rotation ?? 0}deg)`, transformOrigin: "center center" }}
+                >
                     {renderBoxShape(shape)}
                 </div>
             </Rnd>
@@ -1497,6 +1598,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
                 position={{ x: note.x, y: note.y }}
                 bounds="parent"
                 scale={scale}
+                enableResizing={!note.rotation}
                 disableDragging={isGroupDragEligible(note.id)}
                 onPointerDown={(e: React.PointerEvent<HTMLElement>) => {
                     if (selectedTool === "eraser") {
@@ -1520,7 +1622,10 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
                     pushHistory(doMessage, { kind: "note", action: "update", payload: note });
                 }}
             >
-                <div className={`h-full w-full ${selectedIds.has(note.id) ? "ring-2 ring-blue-500 ring-offset-2" : ""}`} style={getObjectCursorStyle()}>
+                <div
+                    className={`h-full w-full ${selectedIds.has(note.id) ? "ring-2 ring-blue-500 ring-offset-2" : ""}`}
+                    style={{ ...getObjectCursorStyle(), transform: `rotate(${note.rotation ?? 0}deg)`, transformOrigin: "center center" }}
+                >
                     {renderNote(note)}
                 </div>
             </Rnd>
@@ -1535,6 +1640,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
                 position={{ x: textBox.x, y: textBox.y }}
                 bounds="parent"
                 scale={scale}
+                enableResizing={!textBox.rotation}
                 disableDragging={isGroupDragEligible(textBox.id)}
                 onPointerDown={(e: React.PointerEvent<HTMLElement>) => {
                     if (selectedTool === "eraser") {
@@ -1573,7 +1679,10 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
                     pushHistory(doMessage, { kind: "text", action: "update", payload: textBox });
                 }}
             >
-                <div className={`h-full w-full ${selectedIds.has(textBox.id) ? "ring-2 ring-blue-500 ring-offset-2" : ""}`} style={getObjectCursorStyle()}>
+                <div
+                    className={`h-full w-full ${selectedIds.has(textBox.id) ? "ring-2 ring-blue-500 ring-offset-2" : ""}`}
+                    style={{ ...getObjectCursorStyle(), transform: `rotate(${textBox.rotation ?? 0}deg)`, transformOrigin: "center center" }}
+                >
                     {renderText(textBox)}
                 </div>
             </Rnd>
@@ -1625,6 +1734,51 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
                         return renderTextItem(entry.item);
                 }
             })}
+            {(() => {
+                const rotatable = getRotatableSelected();
+                if (!rotatable) return null;
+                const { kind, item } = rotatable;
+                const cx = item.x + item.width / 2;
+                const cy = item.y + item.height / 2;
+                const rotation = item.rotation ?? 0;
+                // -90 puts the handle straight up at rotation 0; it then swings
+                // around the centre as rotation changes, staying "above" the shape.
+                const rad = ((rotation - 90) * Math.PI) / 180;
+                const edgeDist = item.height / 2;
+                const handleDist = edgeDist + 28;
+                const ex = cx + edgeDist * Math.cos(rad);
+                const ey = cy + edgeDist * Math.sin(rad);
+                const hx = cx + handleDist * Math.cos(rad);
+                const hy = cy + handleDist * Math.sin(rad);
+                return (
+                    <>
+                        <svg className="pointer-events-none absolute inset-0 h-full w-full overflow-visible">
+                            <line
+                                x1={ex}
+                                y1={ey}
+                                x2={hx}
+                                y2={hy}
+                                stroke="#3b82f6"
+                                strokeWidth="1"
+                                vectorEffect="non-scaling-stroke"
+                            />
+                        </svg>
+                        <div
+                            onPointerDown={(e) => handleRotateHandlePointerDown(e, kind, item)}
+                            className="absolute rounded-full border border-blue-500 bg-white shadow-sm"
+                            style={{
+                                left: hx,
+                                top: hy,
+                                width: 14,
+                                height: 14,
+                                transform: "translate(-50%, -50%)",
+                                cursor: "grab",
+                                touchAction: "none",
+                            }}
+                        />
+                    </>
+                );
+            })()}
             {Array.from(userMap.entries()).map(([userId, cursor]) => {
                 const colour = getCursorColour(userId);
                 return (
