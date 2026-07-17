@@ -12,20 +12,6 @@
     "dev:server": "npm run dev -w server"
   },
   "devDependencies": {
-    "@types/cookie-parser": "^1.4.10",
     "concurrently": "^9.2.1"
-  },
-  "dependencies": {
-    "@types/bcrypt": "^6.0.0",
-    "@types/express": "^5.0.6",
-    "@types/jsonwebtoken": "^9.0.10",
-    "bcrypt": "^6.0.0",
-    "cookie-parser": "^1.4.7",
-    "express": "^5.2.1",
-    "jsonwebtoken": "^9.0.3",
-    "mongodb": "^7.4.0",
-    "mongoose": "^9.7.3",
-    "nodemailer": "^9.0.3",
-    "react-rnd": "^10.5.3"
   }
 }

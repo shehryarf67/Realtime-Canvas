@@ -20,6 +20,31 @@ type CanvasMessage =
   | { kind: Kind; action: "add" | "update"; payload: { id: Id } & Record<string, unknown> }
   | { kind: Kind; action: "delete"; id: Id };
 
+const VALID_KINDS: readonly Kind[] = ["shape", "note", "text"];
+
+function isValidId(id: unknown): id is Id {
+  return typeof id === "string" || typeof id === "number";
+}
+
+// Clients are authenticated and room-authorized, but still untrusted — a
+// malformed message shouldn't reach the DB or get rebroadcast. Accept only the
+// exact shapes we're willing to persist: a known kind, a valid action, and a
+// primitive id in the right place.
+export function isValidCanvasMessage(message: unknown): message is CanvasMessage {
+  if (typeof message !== "object" || message === null) return false;
+  const m = message as Record<string, unknown>;
+  if (!VALID_KINDS.includes(m.kind as Kind)) return false;
+
+  if (m.action === "delete") {
+    return isValidId(m.id);
+  }
+  if (m.action === "add" || m.action === "update") {
+    if (typeof m.payload !== "object" || m.payload === null) return false;
+    return isValidId((m.payload as Record<string, unknown>).id);
+  }
+  return false;
+}
+
 // roomId -> userId -> how many open sockets that user currently has in the
 // room. A user open in two tabs should only ever produce one user-joined and
 // one user-left broadcast, not one per socket.
@@ -34,6 +59,10 @@ let ioInstance: Server | null = null;
 
 export function initSocketServer(httpServer: HTTPServer): Server {
   const io = new Server(httpServer, {
+    // Cap a single inbound message. Default is 1MB; one canvas item (even a
+    // long pen stroke) is far smaller, so 256KB is generous while stopping a
+    // client from pushing oversized blobs into the DB / broadcast.
+    maxHttpBufferSize: 256 * 1024,
     cors: {
       origin: CLIENT_ORIGIN,
       methods: ["GET", "POST"],
@@ -134,15 +163,18 @@ export function initSocketServer(httpServer: HTTPServer): Server {
       const authorizedRooms = socket.data.authorizedRooms as Set<string> | undefined;
       if (!authorizedRooms?.has(roomId)) return;
       if (deletedRoomIds.has(roomId)) return;
+      if (!isValidCanvasMessage(message)) return; // drop malformed messages
 
       try {
         const col = items();
         if (message.action === "delete"){
-          await col.deleteOne({_id: message.id});
+          // Scope by roomId as well as _id so a member of one board can't
+          // delete an item belonging to another board by its id.
+          await col.deleteOne({_id: message.id, roomId});
         }
         else {
           await col.updateOne(
-            { _id: message.payload.id},
+            { _id: message.payload.id, roomId},
             { $set: {roomId, kind: message.kind, data: message.payload}},
             {upsert: true}
           )
