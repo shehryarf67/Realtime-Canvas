@@ -113,6 +113,16 @@ router.post("/signup", signupLimiter, async (req, res) => {
 router.post("/login", loginLimiter, async (req, res) => {
   const { email, password } = req.body;
 
+  // Validate types before querying: express.json() lets these be arbitrary
+  // objects, and an object like {"$ne": null} would be interpreted as a Mongo
+  // query operator (NoSQL injection). Requiring strings closes that off. Same
+  // generic 401 as a wrong password, so this can't be used as an oracle to
+  // distinguish malformed input from a real account.
+  if (!isValidEmail(email) || !isNonEmptyString(password)) {
+    res.status(401).json({ error: "Invalid email or password" });
+    return;
+  }
+
   // Find the user by email
   const user = await users().findOne({ email });
   if (!user) {

@@ -82,6 +82,17 @@ describe("POST /auth/login", () => {
     expect(res.status).toBe(401);
   });
 
+  it("rejects a NoSQL operator-injection payload with a plain 401 (not a 500 or a login)", async () => {
+    const res = await request(ctx.app)
+      .post("/auth/login")
+      .send({ email: { $ne: null }, password: { $ne: null } });
+
+    // Must be the generic 401 — never a 200 (injected-object auth bypass) and
+    // never a 500 (non-string password reaching bcrypt.compare).
+    expect(res.status).toBe(401);
+    expect(res.headers["set-cookie"]).toBeUndefined();
+  });
+
   it("rejects an unknown email with 401 and the same error as a wrong password", async () => {
     const wrongPassword = await request(ctx.app)
       .post("/auth/login")
