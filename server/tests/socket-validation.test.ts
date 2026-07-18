@@ -45,4 +45,11 @@ describe("isValidCanvasMessage", () => {
     expect(isValidCanvasMessage(undefined)).toBe(false);
     expect(isValidCanvasMessage({})).toBe(false);
   });
+
+  it("rejects note/text with oversized text content but allows normal content", () => {
+    const big = "a".repeat(20_001);
+    expect(isValidCanvasMessage({ kind: "note", action: "add", payload: { id: "n1", text: big } })).toBe(false);
+    expect(isValidCanvasMessage({ kind: "text", action: "update", payload: { id: "t1", text: big } })).toBe(false);
+    expect(isValidCanvasMessage({ kind: "note", action: "add", payload: { id: "n1", text: "a".repeat(100) } })).toBe(true);
+  });
 });

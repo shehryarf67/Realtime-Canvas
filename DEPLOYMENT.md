@@ -62,6 +62,11 @@ After the web app has its final URL, set `CLIENT_ORIGIN` on the API to that exac
 
 `npm run dev` in both `server/` and `web/`. Cookies stay `SameSite=Lax` without `Secure` (required on plain-HTTP localhost); missing SMTP falls back to Ethereal preview URLs; `CLIENT_ORIGIN` defaults to `http://localhost:3000`.
 
+## Security posture notes
+
+- **Security headers.** The API sends hardening headers via `helmet` (and hides `X-Powered-By`); the web app sends `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`, HSTS, and `Permissions-Policy` from `next.config.ts`. A full **Content-Security-Policy is not yet configured** on the web app (it needs per-request nonce plumbing for Next's inline scripts) — tracked as a follow-up.
+- **CSRF.** In production the auth cookie is `SameSite=None` (frontend and API are on different domains), so it rides cross-site requests. State-changing requests are protected in depth by three layers: (1) they require `application/json`, which forces a CORS preflight that the single-origin policy blocks; (2) `DELETE`/`PATCH` are non-simple methods that always preflight; and (3) an explicit server-side check rejects any mutating request whose `Origin` header doesn't match `CLIENT_ORIGIN`. If you add an endpoint that accepts a simple content-type (form-encoded/text), rely on layer 3 — don't remove it.
+
 ## Known advisories (watch items)
 
 - **postcss (moderate) via Next.** `npm audit` reports a moderate postcss XSS-in-stringify advisory pulled in transitively by Next. The affected range includes every Next up to `16.3.0-canary.5`, so the current latest **stable** (16.2.10, which we're on) does not clear it — the first fixed version is **16.3.0 stable, not yet released**. It is not exploitable here (Next runs postcss only at build time on our own CSS, never on untrusted input). **Action:** bump Next to `16.3.0` once it ships stable. Do **not** run `npm audit fix --force` (it would downgrade Next to 9.x and break the app), and do not ship a canary/preview to production.

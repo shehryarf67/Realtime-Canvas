@@ -1,9 +1,28 @@
-import express, { type ErrorRequestHandler } from "express";
+import express, { type ErrorRequestHandler, type RequestHandler } from "express";
 import cookieParser from "cookie-parser";
+import helmet from "helmet";
 import { CLIENT_ORIGIN } from "./config.js";
 import authRouter from "./routes/auth.js";
 import boardsRouter from "./routes/boards.js";
 import { logger } from "./lib/logger.js";
+
+// Defense-in-depth against CSRF. In production the auth cookie is
+// SameSite=None (frontend and API are on different domains), so it rides
+// cross-site requests. State-changing requests are already largely protected
+// because they require application/json (which forces a CORS preflight our
+// single-origin policy blocks), but this makes it explicit: any mutating
+// request that carries a browser Origin must match the configured client.
+// Requests with no Origin (server-to-server, curl, health checks) are allowed.
+const MUTATING_METHODS = new Set(["POST", "PATCH", "PUT", "DELETE"]);
+const enforceOrigin: RequestHandler = (req, res, next) => {
+  if (!MUTATING_METHODS.has(req.method)) return next();
+  const origin = req.headers.origin;
+  if (origin && origin !== CLIENT_ORIGIN) {
+    res.status(403).json({ error: "Cross-origin request blocked" });
+    return;
+  }
+  next();
+};
 
 // Catches anything a route throws or rejects with (Express 5 forwards async
 // rejections here automatically). Logs the real error server-side but returns
@@ -38,8 +57,15 @@ export function buildApp(): express.Express {
   // rate limiting and Secure cookies) instead of the proxy itself.
   app.set("trust proxy", 1);
 
+  // Security headers (X-Content-Type-Options, X-Frame-Options, HSTS, etc.) and
+  // removes X-Powered-By. CORP is set to cross-origin because this API is
+  // intentionally consumed from the web app's separate origin.
+  app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
+  app.disable("x-powered-by");
+
   app.use(express.json());
   app.use(cookieParser());
+  app.use(enforceOrigin);
   app.use((req, res, next) => {
     res.setHeader("Access-Control-Allow-Origin", CLIENT_ORIGIN);
     res.setHeader("Access-Control-Allow-Credentials", "true");

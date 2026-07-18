@@ -23,6 +23,11 @@ type CanvasMessage =
 
 const VALID_KINDS: readonly Kind[] = ["shape", "note", "text"];
 
+// Caps the text content stored on a note/text box. The whole message is
+// already bounded by maxHttpBufferSize (256KB); this is a tighter, per-field
+// bound so a single item can't hold an absurd amount of text.
+const MAX_TEXT_LENGTH = 20_000;
+
 function isValidId(id: unknown): id is Id {
   return typeof id === "string" || typeof id === "number";
 }
@@ -41,7 +46,13 @@ export function isValidCanvasMessage(message: unknown): message is CanvasMessage
   }
   if (m.action === "add" || m.action === "update") {
     if (typeof m.payload !== "object" || m.payload === null) return false;
-    return isValidId((m.payload as Record<string, unknown>).id);
+    const p = m.payload as Record<string, unknown>;
+    if (!isValidId(p.id)) return false;
+    // Notes and text boxes carry a `text` field — reject oversized content.
+    if ((m.kind === "note" || m.kind === "text") && typeof p.text === "string" && p.text.length > MAX_TEXT_LENGTH) {
+      return false;
+    }
+    return true;
   }
   return false;
 }
