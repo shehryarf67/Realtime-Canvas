@@ -143,6 +143,42 @@ describe("board items endpoint", () => {
   });
 });
 
+describe("board creation input validation", () => {
+  it("creates a board with a valid string code and name", async () => {
+    const res = await request(ctx.app)
+      .post("/boards")
+      .set("Cookie", ownerCookie)
+      .send({ roomId: "valid-code-1", name: "Untitled Board" });
+    expect(res.status).toBe(201);
+  });
+
+  it("rejects a duplicate roomId with 409 (not a raw 500)", async () => {
+    const res = await request(ctx.app)
+      .post("/boards")
+      .set("Cookie", ownerCookie)
+      .send({ roomId: "valid-code-1", name: "Other" });
+    expect(res.status).toBe(409);
+  });
+
+  it("rejects a missing, non-string, or object roomId with 400", async () => {
+    for (const roomId of [undefined, "", 123, { $ne: null }]) {
+      const res = await request(ctx.app)
+        .post("/boards")
+        .set("Cookie", ownerCookie)
+        .send({ roomId, name: "X" });
+      expect(res.status).toBe(400);
+    }
+  });
+
+  it("rejects a non-string name with 400", async () => {
+    const res = await request(ctx.app)
+      .post("/boards")
+      .set("Cookie", ownerCookie)
+      .send({ roomId: "code-with-bad-name", name: { $ne: null } });
+    expect(res.status).toBe(400);
+  });
+});
+
 // Regression tests for the object-level authorization fix: a logged-in user
 // who is NOT a member of a board must not be able to read or mutate it, even
 // though they hold a valid auth cookie and know the roomId.

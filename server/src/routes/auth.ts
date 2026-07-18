@@ -7,6 +7,7 @@ import { users } from "../db.js";
 import { JWT_SECRET, CLIENT_ORIGIN, AUTH_COOKIE_NAME, AUTH_COOKIE_OPTIONS } from "../config.js";
 import { isValidEmail, isValidPassword, isNonEmptyString, MIN_PASSWORD_LENGTH } from "../lib/validation.js";
 import { sendPasswordResetEmail } from "../lib/mailer.js";
+import { verifyToken } from "../lib/auth.js";
 
 const router = Router();
 
@@ -91,11 +92,12 @@ router.post("/signup", signupLimiter, async (req, res) => {
     email,
     passwordHash,
     createdAt: Date.now(),
+    tokenVersion: 0,
   });
 
-  // Sign a JWT with the new user's ID, name, and email
+  // Sign a JWT with the new user's ID, name, email, and tokenVersion
   const token = jwt.sign(
-    { userId: result.insertedId, name, email },
+    { userId: result.insertedId, name, email, tokenVersion: 0 },
     JWT_SECRET,
     { expiresIn: "7d" }
   );
@@ -137,9 +139,10 @@ router.post("/login", loginLimiter, async (req, res) => {
     return;
   }
 
-  // Sign a JWT the same way signup does
+  // Sign a JWT the same way signup does, carrying the user's current
+  // tokenVersion so a later bump (password reset) invalidates this token.
   const token = jwt.sign(
-    { userId: user._id, name: user.name, email: user.email },
+    { userId: user._id, name: user.name, email: user.email, tokenVersion: user.tokenVersion ?? 0 },
     JWT_SECRET,
     { expiresIn: "7d" }
   );
@@ -152,19 +155,21 @@ router.post("/login", loginLimiter, async (req, res) => {
   res.status(200).json({ userId: user._id, name: user.name, email: user.email });
 });
 
-router.get("/me", (req, res) => {
+router.get("/me", async (req, res) => {
   const token = req.cookies?.token;
   if (!token) {
     res.status(401).json({ error: "Not authenticated" });
     return;
   }
 
-  try {
-    const decoded = jwt.verify(token, JWT_SECRET) as { userId: string; name: string; email: string };
-    res.status(200).json({ userId: decoded.userId, name: decoded.name, email: decoded.email });
-  } catch {
+  // verifyToken also rejects tokens superseded by a password reset, so /me
+  // reflects revoked sessions rather than trusting the JWT signature alone.
+  const decoded = await verifyToken(token);
+  if (!decoded) {
     res.status(401).json({ error: "Invalid or expired token" });
+    return;
   }
+  res.status(200).json({ userId: decoded.userId, name: decoded.name, email: decoded.email });
 });
 
 router.post("/logout", (_req, res) => {
@@ -240,6 +245,9 @@ router.post("/reset-password", resetPasswordLimiter, async (req, res) => {
     {
       $set: { passwordHash },
       $unset: { resetTokenHash: "", resetTokenExpiresAt: "" },
+      // Invalidate every session issued before this reset — any existing JWT
+      // carries the old tokenVersion and will now fail verifyToken.
+      $inc: { tokenVersion: 1 },
     }
   );
 

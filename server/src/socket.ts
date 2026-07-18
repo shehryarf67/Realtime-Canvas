@@ -1,8 +1,8 @@
 import type { Server as HTTPServer } from "http";
 import { Server } from "socket.io";
-import jwt from "jsonwebtoken";
 import { boards, items, type Id, type Kind } from "./db.js";
-import { CLIENT_ORIGIN, JWT_SECRET, AUTH_COOKIE_NAME } from "./config.js";
+import { CLIENT_ORIGIN, AUTH_COOKIE_NAME } from "./config.js";
+import { verifyToken } from "./lib/auth.js";
 
 // Socket.IO's handshake never passes through Express's cookie-parser
 // middleware, so the "token" cookie has to be pulled out of the raw
@@ -71,21 +71,24 @@ export function initSocketServer(httpServer: HTTPServer): Server {
   });
   ioInstance = io;
 
-  io.use((socket, next) => {
+  io.use(async (socket, next) => {
     const token = readCookie(socket.handshake.headers.cookie, AUTH_COOKIE_NAME);
     if (!token) {
       next(new Error("Authentication required"));
       return;
     }
 
-    try {
-      const decoded = jwt.verify(token, JWT_SECRET) as { userId: string; name: string };
-      socket.data.userId = decoded.userId;
-      socket.data.name = decoded.name;
-      next();
-    } catch {
+    // Same check as the REST middleware: signature + tokenVersion, so a socket
+    // can't be opened with a token invalidated by a password reset.
+    const payload = await verifyToken(token);
+    if (!payload) {
       next(new Error("Invalid or expired token"));
+      return;
     }
+
+    socket.data.userId = payload.userId;
+    socket.data.name = payload.name;
+    next();
   })
 
   io.on("connection", (socket) => {
@@ -191,13 +194,14 @@ export function initSocketServer(httpServer: HTTPServer): Server {
       socket.to(roomId).emit("shape-message", message);
     })
 
-    socket.on("cursor-move", ({ roomId, x, y, name }: { roomId: string; x: number; y: number; name: string }) => {
+    socket.on("cursor-move", ({ roomId, x, y }: { roomId: string; x: number; y: number }) => {
       const authorizedRooms = socket.data.authorizedRooms as Set<string> | undefined;
       if (!authorizedRooms?.has(roomId)) return;
 
-      socket.to(roomId).emit("cursor-move", { userId: socket.data.userId, x, y, name });
-      // No need of a DB as this is ephemeral
-      // The data of cursor needs to be sent to only other users
+      // Name comes from the trusted, JWT-derived socket.data.name — NOT from
+      // the client payload — so a user can't spoof another person's name on
+      // their cursor. x/y are ephemeral and not persisted.
+      socket.to(roomId).emit("cursor-move", { userId: socket.data.userId, x, y, name: socket.data.name });
     })
 
     socket.on("disconnect", () => {

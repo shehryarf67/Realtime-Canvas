@@ -22,6 +22,10 @@ export type User = {
   createdAt: number;
   resetTokenHash?: string;
   resetTokenExpiresAt?: number;
+  // Bumped whenever every existing session must be invalidated (e.g. password
+  // reset). A token is only accepted while its tokenVersion still matches the
+  // user's current value, so old tokens stop working after a bump.
+  tokenVersion?: number;
 }
 
 export type Board = {

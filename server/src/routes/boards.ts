@@ -2,6 +2,12 @@ import { Router, type Response } from "express";
 import { boards, items, type Board, type Id } from "../db.js";
 import requireAuth from "../middleware/requireAuth.js";
 import { notifyBoardDeleted } from "../socket.js";
+import { isNonEmptyString } from "../lib/validation.js";
+
+// Board codes and names come straight from the client; bound their length so a
+// caller can't store an oversized value (the code is also a DB lookup key).
+const MAX_ROOM_ID_LENGTH = 120;
+const MAX_NAME_LENGTH = 200;
 
 const router = Router();
 
@@ -41,17 +47,34 @@ router.post("/", requireAuth, async (req, res) => {
   if (!ownerId) {
     return res.status(401).json({ error: "Unauthorized" });
   }
+  // Validate types before storing: these are attacker-controllable and roomId
+  // becomes a lookup key everywhere, so reject non-strings, empties, and
+  // oversized values rather than persisting them.
+  if (!isNonEmptyString(roomId) || roomId.length > MAX_ROOM_ID_LENGTH) {
+    return res.status(400).json({ error: "Invalid board code" });
+  }
+  if (typeof name !== "string" || name.length > MAX_NAME_LENGTH) {
+    return res.status(400).json({ error: "Invalid board name" });
+  }
 
-  const result = await boards().insertOne({
-    roomId,
-    name,
-    ownerId,
-    memberIds: [ownerId],
-    createdAt: Date.now(),
-    lastEditedAt: Date.now(),
-  });
-
-  res.status(201).json({ boardId: result.insertedId, roomId, name, ownerId });
+  try {
+    const result = await boards().insertOne({
+      roomId,
+      name,
+      ownerId,
+      memberIds: [ownerId],
+      createdAt: Date.now(),
+      lastEditedAt: Date.now(),
+    });
+    res.status(201).json({ boardId: result.insertedId, roomId, name, ownerId });
+  } catch (err) {
+    // Unique index on roomId: a duplicate means the code is already taken.
+    // Answer 409 instead of leaking a raw 500 from the driver.
+    if (err && typeof err === "object" && (err as { code?: number }).code === 11000) {
+      return res.status(409).json({ error: "Board code already in use" });
+    }
+    throw err;
+  }
 });
 
 router.post("/:roomId/join", requireAuth, async (req, res) => {
