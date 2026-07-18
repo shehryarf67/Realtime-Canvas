@@ -1837,6 +1837,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
         >
             <div
                 ref={canvasRef}
+                data-testid="canvas"
                 onPointerDown={handlePointerDown}
                 onPointerMove={handlePointerMove}
                 onPointerUp={handlePointerUp}

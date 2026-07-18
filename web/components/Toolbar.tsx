@@ -28,54 +28,63 @@ export default function Toolbar({ selectedTool, onSelectTool, selectedColour, on
     return (
         <div className="flex flex-wrap items-center gap-2">
             <button
+                aria-label="Select"
                 className={`p-2 bg-gray-200 hover:bg-gray-300 text-black rounded border ${selectedTool === "select" ? "ring-2 ring-blue-500 text-white" : "border-transparent"}`}
                 onClick={() => onSelectTool("select")}
             >
                 <MousePointer2 size={18} />
             </button>
             <button
+                aria-label="Square"
                 className={`p-2 bg-gray-200 hover:bg-gray-300 text-black rounded border ${selectedTool === "square" ? "ring-2 ring-blue-500 text-white" : "border-transparent"}`}
                 onClick={() => onSelectTool("square")}
             >
                 <Square size={18} />
             </button>
             <button
+                aria-label="Circle"
                 className={`p-2 bg-gray-200 hover:bg-gray-300 text-black rounded border ${selectedTool === "circle" ? "ring-2 ring-blue-500 text-white" : "border-transparent"}`}
                 onClick={() => onSelectTool("circle")}
             >
                 <Circle size={18} />
             </button>
             <button
+                aria-label="Triangle"
                 className={`p-2 bg-gray-200 hover:bg-gray-300 text-black rounded border ${selectedTool === "triangle" ? "ring-2 ring-blue-500 text-white" : "border-transparent"}`}
                 onClick={() => onSelectTool("triangle")}
             >
                 <Triangle size={18} />
             </button>
             <button
+                aria-label="Pen"
                 className={`p-2 bg-gray-200 hover:bg-gray-300 text-black rounded border ${selectedTool === "pen" ? "ring-2 ring-blue-500 text-white" : "border-transparent"}`}
                 onClick={() => onSelectTool("pen")}
             >
                 <Pen size={18} />
             </button>
             <button
+                aria-label="Line"
                 className={`p-2 bg-gray-200 hover:bg-gray-300 text-black rounded border ${selectedTool === "line" ? "ring-2 ring-blue-500 text-white" : "border-transparent"}`}
                 onClick={() => onSelectTool("line")}
             >
                 <Minus size={18} />
             </button>
             <button
+                aria-label="Text"
                 className={`p-2 bg-gray-200 hover:bg-gray-300 text-black rounded border ${selectedTool === "text" ? "ring-2 ring-blue-500 text-white" : "border-transparent"}`}
                 onClick={() => onSelectTool("text")}
             >
                 <Type size={18} />
             </button>
             <button
+                aria-label="Note"
                 className={`p-2 bg-gray-200 hover:bg-gray-300 text-black rounded border ${selectedTool === "note" ? "ring-2 ring-blue-500 text-white" : "border-transparent"}`}
                 onClick={() => onSelectTool("note")}
             >
                 <StickyNote size={18} />
             </button>
             <button
+                aria-label="Eraser"
                 className={`p-2 bg-gray-200 hover:bg-gray-300 text-black rounded border ${selectedTool === "eraser" ? "ring-2 ring-blue-500 text-white" : "border-transparent"}`}
                 onClick={() => onSelectTool("eraser")}
             >
@@ -85,6 +94,7 @@ export default function Toolbar({ selectedTool, onSelectTool, selectedColour, on
             {colours.map((colour) => (
                 <button
                     key={colour}
+                    aria-label={`Colour ${colour}`}
                     className={`h-10 w-10 rounded-full border hover:ring-2 hover:ring-blue-500 ${selectedColour === colour ? "ring-2 ring-blue-500" : "border-gray-300"}`}
                     style={{ backgroundColor: colour }}
                     onClick={() => onSelectedColourChange(colour)}
@@ -92,6 +102,7 @@ export default function Toolbar({ selectedTool, onSelectTool, selectedColour, on
             ))}
             <div className="mx-1 h-10 w-px bg-gray-300" />
             <button
+                aria-label="Undo"
                 className="p-2 bg-gray-200 hover:bg-gray-300 text-black rounded border border-transparent disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-gray-200"
                 onClick={onUndo}
                 disabled={!canUndo}
@@ -99,6 +110,7 @@ export default function Toolbar({ selectedTool, onSelectTool, selectedColour, on
                 <Undo2 size={18} />
             </button>
             <button
+                aria-label="Redo"
                 className="p-2 bg-gray-200 hover:bg-gray-300 text-black rounded border border-transparent disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-gray-200"
                 onClick={onRedo}
                 disabled={!canRedo}
