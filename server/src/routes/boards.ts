@@ -1,4 +1,5 @@
 import { Router, type Response } from "express";
+import { rateLimit } from "express-rate-limit";
 import { boards, items, type Board, type Id } from "../db.js";
 import requireAuth from "../middleware/requireAuth.js";
 import { notifyBoardDeleted } from "../socket.js";
@@ -8,6 +9,19 @@ import { isNonEmptyString } from "../lib/validation.js";
 // caller can't store an oversized value (the code is also a DB lookup key).
 const MAX_ROOM_ID_LENGTH = 120;
 const MAX_NAME_LENGTH = 200;
+
+// Cap how many boards one account can create per hour so an authenticated user
+// can't script unlimited board creation. Keyed by userId (set by requireAuth,
+// which runs first), so it's per-account rather than per-IP — shared office
+// networks aren't collectively throttled.
+const createBoardLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.userId ?? "anonymous",
+  message: { error: "Too many boards created. Try again later." },
+});
 
 const router = Router();
 
@@ -41,7 +55,7 @@ async function requireMembership(
 }
 
 // Create a new board
-router.post("/", requireAuth, async (req, res) => {
+router.post("/", requireAuth, createBoardLimiter, async (req, res) => {
   const { roomId, name } = req.body;
   const ownerId = req.userId;
   if (!ownerId) {

@@ -3,12 +3,13 @@ import cookieParser from "cookie-parser";
 import { CLIENT_ORIGIN } from "./config.js";
 import authRouter from "./routes/auth.js";
 import boardsRouter from "./routes/boards.js";
+import { logger } from "./lib/logger.js";
 
 // Catches anything a route throws or rejects with (Express 5 forwards async
 // rejections here automatically). Logs the real error server-side but returns
 // a generic message so internals/stack traces never reach the client.
 const errorHandler: ErrorRequestHandler = (err, _req, res, next) => {
-  console.error("Unhandled request error:", err);
+  logger.error("Unhandled request error", { err });
   // If the response already started streaming, we can't change the status —
   // hand off to Express's default handler to close the connection.
   if (res.headersSent) {

@@ -1,5 +1,6 @@
 import "dotenv/config";
 import type { CookieOptions } from "express";
+import { logger } from "./lib/logger.js";
 
 // Central place for environment config. Every module that needs env values
 // imports from here, which guarantees dotenv has run first regardless of
@@ -9,10 +10,9 @@ import type { CookieOptions } from "express";
 function requireEnv(name: string): string {
   const value = process.env[name];
   if (!value) {
-    console.error(
-      `Missing required environment variable: ${name}\n` +
-        `Set it in server/.env for local dev, or in your host's environment settings for production.`
-    );
+    logger.error(`Missing required environment variable: ${name}`, {
+      hint: "Set it in server/.env for local dev, or in your host's environment settings for production.",
+    });
     process.exit(1);
   }
   return value;

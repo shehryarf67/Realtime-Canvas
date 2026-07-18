@@ -1,5 +1,6 @@
 import { MongoClient, type Collection } from "mongodb";
 import { MONGODB_URI } from "./config.js";
+import { logger } from "./lib/logger.js";
 
 export type Id = string | number;
 export type Kind = "shape" | "note" | "text";
@@ -54,7 +55,7 @@ export async function connectToDatabase(): Promise<void> {
   await usersCollection.createIndex({ email: 1 }, { unique: true });
   boardsCollection = db.collection<Board>("boards");
   await boardsCollection.createIndex({ roomId: 1 }, { unique: true });
-  console.log("connected to MongoDB");
+  logger.info("connected to MongoDB");
 }
 
 // Used by the graceful-shutdown handler so in-flight writes finish cleanly

@@ -3,6 +3,7 @@ import { PORT } from "./config.js";
 import { buildApp } from "./app.js";
 import { connectToDatabase, closeDatabase } from "./db.js";
 import { initSocketServer } from "./socket.js";
+import { logger } from "./lib/logger.js";
 
 const httpServer = createServer(buildApp());
 
@@ -11,11 +12,11 @@ initSocketServer(httpServer);
 connectToDatabase()
   .then(() => {
     httpServer.listen(PORT, () => {
-      console.log(`socket server listening on :${PORT}`);
+      logger.info("server listening", { port: PORT });
     });
   })
   .catch((err) => {
-    console.error("Failed to connect to MongoDB:", err);
+    logger.error("Failed to connect to MongoDB", { err });
     process.exit(1);
   });
 
@@ -24,7 +25,7 @@ connectToDatabase()
 // off mid-operation. The timeout guards against a hung close keeping the old
 // instance alive past the platform's kill window.
 process.on("SIGTERM", () => {
-  console.log("SIGTERM received, shutting down");
+  logger.info("SIGTERM received, shutting down");
   httpServer.close(async () => {
     await closeDatabase().catch(() => {});
     process.exit(0);

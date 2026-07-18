@@ -3,6 +3,7 @@ import { Server } from "socket.io";
 import { boards, items, type Id, type Kind } from "./db.js";
 import { CLIENT_ORIGIN, AUTH_COOKIE_NAME } from "./config.js";
 import { verifyToken } from "./lib/auth.js";
+import { logger } from "./lib/logger.js";
 
 // Socket.IO's handshake never passes through Express's cookie-parser
 // middleware, so the "token" cookie has to be pulled out of the raw
@@ -98,7 +99,7 @@ export function initSocketServer(httpServer: HTTPServer): Server {
   })
 
   io.on("connection", (socket) => {
-    console.log(`client connected: ${socket.id}`);
+    logger.info("client connected", { socketId: socket.id });
 
     socket.on("join-room", async (roomID: string) => {
       const userId = socket.data.userId as string;
@@ -121,7 +122,7 @@ export function initSocketServer(httpServer: HTTPServer): Server {
           return;
         }
       } catch (err) {
-        console.error("Failed to authorize room join:", err);
+        logger.error("Failed to authorize room join", { err });
         socket.emit("room-error", { message: "Unable to join board" });
         return;
       }
@@ -164,7 +165,7 @@ export function initSocketServer(httpServer: HTTPServer): Server {
         }
         socket.emit("canvas-state", state);
       } catch (err) {
-        console.error("Failed to load canvas state:", err);
+        logger.error("Failed to load canvas state", { err });
       }
     });
 
@@ -194,7 +195,7 @@ export function initSocketServer(httpServer: HTTPServer): Server {
           { $set: { lastEditedAt: Date.now() } }
         );
       } catch (err) {
-        console.error("Failed to handle shape message:", err);
+        logger.error("Failed to handle shape message", { err });
       }
 
       socket.to(roomId).emit("shape-message", message);
@@ -211,7 +212,7 @@ export function initSocketServer(httpServer: HTTPServer): Server {
     })
 
     socket.on("disconnect", () => {
-      console.log(`client disconnected: ${socket.id}`);
+      logger.info("client disconnected", { socketId: socket.id });
       const userId = socket.data.userId as string;
       const rooms = Array.from(socket.rooms).filter((r) => r !== socket.id);
 

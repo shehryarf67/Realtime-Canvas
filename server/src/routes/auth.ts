@@ -8,6 +8,7 @@ import { JWT_SECRET, CLIENT_ORIGIN, AUTH_COOKIE_NAME, AUTH_COOKIE_OPTIONS } from
 import { isValidEmail, isValidPassword, isNonEmptyString, MIN_PASSWORD_LENGTH } from "../lib/validation.js";
 import { sendPasswordResetEmail } from "../lib/mailer.js";
 import { verifyToken } from "../lib/auth.js";
+import { logger } from "../lib/logger.js";
 
 const router = Router();
 
@@ -211,7 +212,7 @@ router.post("/forgot-password", forgotPasswordLimiter, async (req, res) => {
   try {
     await sendPasswordResetEmail(user.email, resetUrl);
   } catch (err) {
-    console.error("Failed to send password reset email:", err);
+    logger.error("Failed to send password reset email", { err });
     res.status(500).json({ error: "Could not send the reset email. Try again later." });
     return;
   }

@@ -61,3 +61,7 @@ After the web app has its final URL, set `CLIENT_ORIGIN` on the API to that exac
 ## Local dev — unchanged
 
 `npm run dev` in both `server/` and `web/`. Cookies stay `SameSite=Lax` without `Secure` (required on plain-HTTP localhost); missing SMTP falls back to Ethereal preview URLs; `CLIENT_ORIGIN` defaults to `http://localhost:3000`.
+
+## Known advisories (watch items)
+
+- **postcss (moderate) via Next.** `npm audit` reports a moderate postcss XSS-in-stringify advisory pulled in transitively by Next. The affected range includes every Next up to `16.3.0-canary.5`, so the current latest **stable** (16.2.10, which we're on) does not clear it — the first fixed version is **16.3.0 stable, not yet released**. It is not exploitable here (Next runs postcss only at build time on our own CSS, never on untrusted input). **Action:** bump Next to `16.3.0` once it ships stable. Do **not** run `npm audit fix --force` (it would downgrade Next to 9.x and break the app), and do not ship a canary/preview to production.

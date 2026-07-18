@@ -1,4 +1,5 @@
 import nodemailer, { type Transporter } from "nodemailer";
+import { logger } from "./logger.js";
 
 // Uses real SMTP credentials when they're configured in .env. Otherwise falls
 // back to an Ethereal test account: mail isn't actually delivered, but each
@@ -25,7 +26,7 @@ function getTransporter() {
       }
 
       const testAccount = await nodemailer.createTestAccount();
-      console.log(`mailer: no SMTP config found, using Ethereal test account (${testAccount.user})`);
+      logger.info("mailer: no SMTP config found, using Ethereal test account", { user: testAccount.user });
       return {
         transporter: nodemailer.createTransport({
           host: "smtp.ethereal.email",
@@ -71,6 +72,6 @@ export async function sendPasswordResetEmail(to: string, resetUrl: string): Prom
   });
 
   if (isEthereal) {
-    console.log(`mailer: password reset email preview -> ${nodemailer.getTestMessageUrl(info)}`);
+    logger.info("mailer: password reset email preview", { previewUrl: nodemailer.getTestMessageUrl(info) });
   }
 }
