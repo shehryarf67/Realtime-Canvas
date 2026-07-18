@@ -156,3 +156,18 @@ describe("GET /health", () => {
     expect(res.body).toEqual({ ok: true });
   });
 });
+
+describe("global error handler", () => {
+  it("turns a malformed JSON body into a clean 400 with no stack trace", async () => {
+    const res = await request(ctx.app)
+      .post("/auth/login")
+      .set("Content-Type", "application/json")
+      .send('{"email": "a@b.com"'); // truncated, invalid JSON
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBeDefined();
+    // The default Express handler would dump a stack trace in the body; ours
+    // must not. Assert no "at fn (file:line:col)" stack frames leaked.
+    expect(JSON.stringify(res.body)).not.toMatch(/\bat\s+.+:\d+:\d+/);
+  });
+});

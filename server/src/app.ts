@@ -1,8 +1,30 @@
-import express from "express";
+import express, { type ErrorRequestHandler } from "express";
 import cookieParser from "cookie-parser";
 import { CLIENT_ORIGIN } from "./config.js";
 import authRouter from "./routes/auth.js";
 import boardsRouter from "./routes/boards.js";
+
+// Catches anything a route throws or rejects with (Express 5 forwards async
+// rejections here automatically). Logs the real error server-side but returns
+// a generic message so internals/stack traces never reach the client.
+const errorHandler: ErrorRequestHandler = (err, _req, res, next) => {
+  console.error("Unhandled request error:", err);
+  // If the response already started streaming, we can't change the status —
+  // hand off to Express's default handler to close the connection.
+  if (res.headersSent) {
+    return next(err);
+  }
+  // Honor an explicit client-error status (e.g. a malformed-JSON body parse
+  // error is a 400); anything 5xx or unlabeled is reported generically so no
+  // stack trace or internal detail leaks to the client.
+  const status = (err as { status?: number; statusCode?: number })?.status
+    ?? (err as { statusCode?: number })?.statusCode;
+  if (typeof status === "number" && status >= 400 && status < 500) {
+    res.status(status).json({ error: (err as Error).message || "Bad request" });
+    return;
+  }
+  res.status(500).json({ error: "Something went wrong" });
+};
 
 // The Express app on its own — no listen(), no Socket.IO, no DB connect.
 // index.ts composes those for the real server; tests mount this directly
@@ -40,6 +62,9 @@ export function buildApp(): express.Express {
 
   app.use("/auth", authRouter);
   app.use("/boards", boardsRouter);
+
+  // Error handler must be registered last, after all routes.
+  app.use(errorHandler);
 
   return app;
 }

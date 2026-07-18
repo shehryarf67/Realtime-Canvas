@@ -52,8 +52,14 @@ const roomPresence = new Map<string, Map<string, { name: string; count: number }
 
 // Rooms whose board has been deleted. Checked before any write, so a
 // shape-message already in flight when the delete happens can't resurrect an
-// items document for a board that no longer exists.
+// items document for a board that no longer exists. Entries are evicted after
+// a grace period (see notifyBoardDeleted) so the set can't grow without bound
+// over a long-running process.
 const deletedRoomIds = new Set<string>();
+
+// The guard only needs to outlast any shape-message in flight at delete time
+// (milliseconds); a few minutes is a very safe margin before forgetting.
+const DELETED_ROOM_TTL_MS = 5 * 60 * 1000;
 
 let ioInstance: Server | null = null;
 
@@ -235,4 +241,7 @@ export function notifyBoardDeleted(roomId: string): void {
   deletedRoomIds.add(roomId);
   ioInstance?.to(roomId).emit("board-deleted");
   ioInstance?.socketsLeave(roomId);
+  // Forget the room after the grace period. unref() so this timer never keeps
+  // the process alive on shutdown.
+  setTimeout(() => deletedRoomIds.delete(roomId), DELETED_ROOM_TTL_MS).unref();
 }
