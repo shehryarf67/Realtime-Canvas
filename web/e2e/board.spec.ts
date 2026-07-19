@@ -42,6 +42,10 @@ test.describe("boards", () => {
     await signUp(page);
     await createBoard(page);
 
+    // Wait for the socket to connect (the disconnected overlay, which blocks
+    // editing, must be gone) before drawing.
+    await expect(page.getByTestId("disconnected-overlay")).toHaveCount(0);
+
     // Select the square tool and drag out a rectangle on the canvas.
     await page.getByRole("button", { name: "Square" }).click();
     const canvas = page.getByTestId("canvas");

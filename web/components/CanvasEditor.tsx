@@ -114,6 +114,10 @@ const SELECTION_PADDING = 6;
 export const CANVAS_WIDTH = 1600;
 export const CANVAS_HEIGHT = 900;
 
+// Upper bound on undo/redo depth so a long session can't grow the history
+// stacks without limit. Oldest entries are dropped past this.
+const MAX_HISTORY = 100;
+
 const TEXT_COLOUR = "#000000";
 const NOTE_COLOUR = "#fff9b1";
 
@@ -183,7 +187,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
     const [editingId, setEditingId] = useState<string | number | null>(null);
     const marqueeStart = useRef<Point | null>(null);
     const [marqueeRect, setMarqueeRect] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
-    const { socket } = useSocket();
+    const { socket, isConnected } = useSocket();
     const auth = useAuth();
     const [userMap, setUserMap] = useState<Map<string, { x: number; y: number; name: string }>>(new Map());
     const [presentUsers, setPresentUsers] = useState<Map<string, string>>(new Map());
@@ -201,7 +205,13 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
     )
 
     function pushHistory(doMessage: CanvasMessage | CanvasMessage[], undoMessage: CanvasMessage | CanvasMessage[]) {
-        setPast((prev) => [...prev, { do: doMessage, undo: undoMessage }]);
+        setPast((prev) => {
+            const next = [...prev, { do: doMessage, undo: undoMessage }];
+            // Cap the stack so a long editing session can't grow it without
+            // bound — drop the oldest entries past the limit. (future is
+            // naturally bounded by past, so it needs no separate cap.)
+            return next.length > MAX_HISTORY ? next.slice(next.length - MAX_HISTORY) : next;
+        });
         setFuture([]); // Clear future on new action which invalidates redo history
     }
 
@@ -1832,9 +1842,24 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
     return (
         <div
             ref={wrapperRef}
-            className="mt-4 w-full overflow-hidden border"
+            className="relative mt-4 w-full overflow-hidden border"
             style={{ aspectRatio: `${CANVAS_WIDTH} / ${CANVAS_HEIGHT}` }}
         >
+            {/* While the socket is down, cover the canvas to block edits — they
+                wouldn't reach the server and would be lost on the reconnect
+                re-sync. The overlay captures pointer events, so nothing new can
+                be drawn until the connection is back. */}
+            {!isConnected && (
+                <div
+                    data-testid="disconnected-overlay"
+                    className="absolute inset-0 z-20 flex items-center justify-center bg-white/60 backdrop-blur-[1px]"
+                >
+                    <div className="flex items-center gap-2 rounded-full bg-amber-50 px-3 py-1.5 text-sm font-medium text-amber-800 shadow">
+                        <span className="h-2 w-2 animate-pulse rounded-full bg-amber-500" />
+                        Reconnecting… editing paused
+                    </div>
+                </div>
+            )}
             <div
                 ref={canvasRef}
                 data-testid="canvas"
