@@ -1,20 +1,23 @@
-import { Router } from "express";
+import { Router, type Response } from "express";
 import { rateLimit } from "express-rate-limit";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
-import { users } from "../db.js";
+import { boards, items, users } from "../db.js";
 import { JWT_SECRET, CLIENT_ORIGIN, AUTH_COOKIE_NAME, AUTH_COOKIE_OPTIONS } from "../config.js";
 import { isValidEmail, isValidPassword, isNonEmptyString, MIN_PASSWORD_LENGTH } from "../lib/validation.js";
 import { sendPasswordResetEmail } from "../lib/mailer.js";
 import { verifyToken } from "../lib/auth.js";
 import { logger } from "../lib/logger.js";
+import requireAuth from "../middleware/requireAuth.js";
+import { disconnectUserSockets, notifyBoardDeleted } from "../socket.js";
 
 const router = Router();
 
 const SALT_ROUNDS = 10;
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour
 const AUTH_COOKIE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+const MAX_DISPLAY_NAME_LENGTH = 80;
 
 // Per-IP limits on the credential endpoints. Without these, login is free to
 // brute-force and forgot-password can be used to bomb someone's inbox.
@@ -57,14 +60,55 @@ const resetPasswordLimiter = rateLimit({
   message: { error: "Too many attempts. Try again later." },
 });
 
+// Changing credentials and deleting an account both verify the current
+// password. Keep those checks rate-limited per signed-in account so a stolen
+// browser session cannot be used for unlimited password guesses.
+const changePasswordLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.userId ?? "anonymous",
+  message: { error: "Too many attempts. Try again in a few minutes." },
+});
+
+const deleteAccountLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.userId ?? "anonymous",
+  message: { error: "Too many attempts. Try again in a few minutes." },
+});
+
 function hashToken(token: string): string {
   return crypto.createHash("sha256").update(token).digest("hex");
+}
+
+function setAuthCookie(
+  res: Response,
+  user: { _id: unknown; name: string; email: string; tokenVersion?: number }
+): void {
+  const token = jwt.sign(
+    {
+      userId: String(user._id),
+      name: user.name,
+      email: user.email,
+      tokenVersion: user.tokenVersion ?? 0,
+    },
+    JWT_SECRET,
+    { expiresIn: "7d" }
+  );
+  res.cookie(AUTH_COOKIE_NAME, token, {
+    ...AUTH_COOKIE_OPTIONS,
+    maxAge: AUTH_COOKIE_MAX_AGE_MS,
+  });
 }
 
 router.post("/signup", signupLimiter, async (req, res) => {
   const { name, email, password } = req.body;
 
-  if (!isNonEmptyString(name)) {
+  if (!isNonEmptyString(name) || name.trim().length > MAX_DISPLAY_NAME_LENGTH) {
     res.status(400).json({ error: "Name is required" });
     return;
   }
@@ -88,29 +132,20 @@ router.post("/signup", signupLimiter, async (req, res) => {
   const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
 
   // Insert the new user
+  const trimmedName = name.trim();
   const result = await users().insertOne({
-    name,
+    name: trimmedName,
     email,
     passwordHash,
     createdAt: Date.now(),
     tokenVersion: 0,
   });
 
-  // Sign a JWT with the new user's ID, name, email, and tokenVersion
-  const token = jwt.sign(
-    { userId: result.insertedId, name, email, tokenVersion: 0 },
-    JWT_SECRET,
-    { expiresIn: "7d" }
-  );
-
   // Send the token as an HTTP-only cookie so JS can't read it. Flags come
   // from config: Secure + SameSite=None in production (cross-site), Lax in dev.
-  res.cookie(AUTH_COOKIE_NAME, token, {
-    ...AUTH_COOKIE_OPTIONS,
-    maxAge: AUTH_COOKIE_MAX_AGE_MS,
-  });
+  setAuthCookie(res, { _id: result.insertedId, name: trimmedName, email, tokenVersion: 0 });
 
-  res.status(201).json({ userId: result.insertedId, name, email });
+  res.status(201).json({ userId: result.insertedId, name: trimmedName, email });
 });
 
 router.post("/login", loginLimiter, async (req, res) => {
@@ -140,18 +175,8 @@ router.post("/login", loginLimiter, async (req, res) => {
     return;
   }
 
-  // Sign a JWT the same way signup does, carrying the user's current
-  // tokenVersion so a later bump (password reset) invalidates this token.
-  const token = jwt.sign(
-    { userId: user._id, name: user.name, email: user.email, tokenVersion: user.tokenVersion ?? 0 },
-    JWT_SECRET,
-    { expiresIn: "7d" }
-  );
-
-  res.cookie(AUTH_COOKIE_NAME, token, {
-    ...AUTH_COOKIE_OPTIONS,
-    maxAge: AUTH_COOKIE_MAX_AGE_MS,
-  });
+  // Carry the current tokenVersion so a later credential change can revoke it.
+  setAuthCookie(res, user);
 
   res.status(200).json({ userId: user._id, name: user.name, email: user.email });
 });
@@ -178,6 +203,118 @@ router.post("/logout", (_req, res) => {
   // Secure/SameSite=None cookie is a different cookie from the browser's
   // point of view, and clearing without the flags silently does nothing
   // in production.
+  res.clearCookie(AUTH_COOKIE_NAME, AUTH_COOKIE_OPTIONS);
+  res.status(200).json({ ok: true });
+});
+
+router.patch("/profile", requireAuth, async (req, res) => {
+  const { name } = req.body;
+  if (!isNonEmptyString(name) || name.trim().length > MAX_DISPLAY_NAME_LENGTH) {
+    res.status(400).json({ error: `Display name must be between 1 and ${MAX_DISPLAY_NAME_LENGTH} characters` });
+    return;
+  }
+  if (!req.userEmail) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  const user = await users().findOneAndUpdate(
+    { email: req.userEmail },
+    { $set: { name: name.trim() } },
+    { returnDocument: "after" }
+  );
+  if (!user) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  // Refresh this browser's JWT so client-side state and future socket
+  // connections immediately use the new display name.
+  setAuthCookie(res, user);
+  res.status(200).json({ userId: user._id, name: user.name, email: user.email });
+});
+
+router.post("/change-password", requireAuth, changePasswordLimiter, async (req, res) => {
+  const { currentPassword, newPassword } = req.body;
+  if (!isNonEmptyString(currentPassword)) {
+    res.status(400).json({ error: "Current password is required" });
+    return;
+  }
+  if (!isValidPassword(newPassword)) {
+    res.status(400).json({ error: `New password must be at least ${MIN_PASSWORD_LENGTH} characters` });
+    return;
+  }
+  if (!req.userEmail) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  const user = await users().findOne({ email: req.userEmail });
+  if (!user || !(await bcrypt.compare(currentPassword, user.passwordHash))) {
+    res.status(401).json({ error: "Current password is incorrect" });
+    return;
+  }
+  if (await bcrypt.compare(newPassword, user.passwordHash)) {
+    res.status(400).json({ error: "New password must be different from your current password" });
+    return;
+  }
+
+  const passwordHash = await bcrypt.hash(newPassword, SALT_ROUNDS);
+  const updatedUser = await users().findOneAndUpdate(
+    { _id: user._id },
+    {
+      $set: { passwordHash },
+      $unset: { resetTokenHash: "", resetTokenExpiresAt: "" },
+      $inc: { tokenVersion: 1 },
+    },
+    { returnDocument: "after" }
+  );
+  if (!updatedUser) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  // All old cookies now fail tokenVersion verification. Give only this
+  // browser a fresh cookie so the person changing the password stays signed in.
+  setAuthCookie(res, updatedUser);
+  disconnectUserSockets(String(updatedUser._id));
+  res.status(200).json({ ok: true });
+});
+
+router.delete("/account", requireAuth, deleteAccountLimiter, async (req, res) => {
+  const { password, confirmation } = req.body;
+  if (!isNonEmptyString(password) || confirmation !== "DELETE") {
+    res.status(400).json({ error: "Enter your password and type DELETE to confirm" });
+    return;
+  }
+  if (!req.userEmail) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  const user = await users().findOne({ email: req.userEmail });
+  if (!user || !(await bcrypt.compare(password, user.passwordHash))) {
+    res.status(401).json({ error: "Password is incorrect" });
+    return;
+  }
+
+  const userId = String(user._id);
+  const ownedBoards = await boards().find({ ownerId: userId }).toArray();
+  for (const board of ownedBoards) {
+    await items().deleteMany({ roomId: board.roomId });
+    await boards().deleteOne({ roomId: board.roomId });
+    notifyBoardDeleted(board.roomId);
+  }
+
+  // Shared boards remain for their owners, but the deleted account no longer
+  // appears in their membership lists.
+  await boards().updateMany(
+    { memberIds: userId },
+    { $pull: { memberIds: userId } }
+  );
+  disconnectUserSockets(userId);
+  await users().deleteOne({ _id: user._id });
+
   res.clearCookie(AUTH_COOKIE_NAME, AUTH_COOKIE_OPTIONS);
   res.status(200).json({ ok: true });
 });
@@ -251,6 +388,8 @@ router.post("/reset-password", resetPasswordLimiter, async (req, res) => {
       $inc: { tokenVersion: 1 },
     }
   );
+
+  disconnectUserSockets(String(user._id));
 
   res.status(200).json({ ok: true });
 });

@@ -15,5 +15,6 @@ export default async function requireAuth(req: Request, res: Response, next: Nex
     }
 
     req.userId = payload.userId;
+    req.userEmail = payload.email;
     next();
 }

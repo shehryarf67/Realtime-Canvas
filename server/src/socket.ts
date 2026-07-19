@@ -257,3 +257,14 @@ export function notifyBoardDeleted(roomId: string): void {
   // the process alive on shutdown.
   setTimeout(() => deletedRoomIds.delete(roomId), DELETED_ROOM_TTL_MS).unref();
 }
+
+// JWT revocation prevents new REST requests and socket handshakes, but a
+// socket that is already connected has passed its handshake already. Close
+// every live connection for the user when credentials change or the account
+// is deleted so that access ends immediately rather than on the next refresh.
+export function disconnectUserSockets(userId: string): void {
+  if (!ioInstance) return;
+  for (const socket of ioInstance.sockets.sockets.values()) {
+    if (socket.data.userId === userId) socket.disconnect(true);
+  }
+}

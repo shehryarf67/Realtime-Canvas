@@ -115,6 +115,12 @@ export default function Boards() {
               </svg>
               <span className="text-lg font-medium tracking-tight">coboard</span>
             </div>
+            <Link
+              href="/account"
+              className="text-sm font-medium text-neutral-600 transition-colors hover:text-neutral-900 motion-reduce:transition-none"
+            >
+              Account
+            </Link>
           </div>
           <button
             type="button"

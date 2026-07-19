@@ -29,5 +29,13 @@ export async function verifyToken(token: string): Promise<AuthPayload | null> {
   if (!user) return null;
   if ((user.tokenVersion ?? 0) !== (decoded.tokenVersion ?? 0)) return null;
 
-  return decoded;
+  // Profile fields come from the database rather than the possibly stale JWT.
+  // This makes a display-name change visible to every existing session the
+  // next time it makes a request, without weakening token verification.
+  return {
+    userId: String(user._id),
+    name: user.name,
+    email: user.email,
+    tokenVersion: user.tokenVersion ?? 0,
+  };
 }

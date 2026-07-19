@@ -243,6 +243,12 @@ export default function Home() {
             {auth?.user && (
               <div className="flex items-center gap-4">
                 <span className="text-sm text-neutral-500">{auth.user.name}</span>
+                <Link
+                  href="/account"
+                  className="text-sm font-medium text-neutral-600 underline underline-offset-4 transition-colors hover:text-neutral-900 motion-reduce:transition-none"
+                >
+                  Account
+                </Link>
                 <button
                   onClick={handleLogout}
                   className="text-sm font-medium text-neutral-600 underline underline-offset-4 transition-colors hover:text-neutral-900 cursor-pointer motion-reduce:transition-none"
