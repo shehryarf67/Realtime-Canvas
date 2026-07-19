@@ -2,8 +2,7 @@ import { expect, type Page } from "@playwright/test";
 
 export type TestUser = { name: string; email: string; password: string };
 
-// Unique per call so tests never collide on the shared in-memory DB or the
-// unique email index. Uses the worker/counter, not a timestamp.
+// A counter keeps test emails unique without relying on timing.
 let counter = 0;
 export function uniqueUser(): TestUser {
   counter += 1;
@@ -15,8 +14,7 @@ export function uniqueUser(): TestUser {
   };
 }
 
-// Signs up through the real UI and waits until the landing page shows the
-// authenticated state (the "Log out" button). Returns the user.
+// Sign up through the UI and wait until auth is visible on the landing page.
 export async function signUp(page: Page, user: TestUser = uniqueUser()): Promise<TestUser> {
   await page.goto("/signup");
   await page.getByLabel("Display name").fill(user.name);
@@ -35,8 +33,7 @@ export async function logIn(page: Page, user: TestUser): Promise<void> {
   await expect(page.getByRole("button", { name: "Log out" })).toBeVisible();
 }
 
-// Creates a board from the landing page and waits until the room has loaded
-// (its "Untitled Board" name field is visible). Returns the room code.
+// Create a board through the UI and return its room code after it loads.
 export async function createBoard(page: Page): Promise<string> {
   await page.getByRole("button", { name: "New board" }).click();
   await page.waitForURL(/\/room\/.+/);

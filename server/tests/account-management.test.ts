@@ -31,8 +31,7 @@ describe("account management", () => {
     expect(updated.body.passwordHash).toBeUndefined();
     expect(getAuthCookie(updated)).toMatch(/^token=/);
 
-    // The endpoint refreshes this browser's cookie, but an older signed cookie
-    // also reads the canonical profile from the DB instead of stale JWT fields.
+    // Even the original cookie should read the changed name from Mongo.
     const me = await request(ctx.app).get("/auth/me").set("Cookie", originalCookie);
     expect(me.status).toBe(200);
     expect(me.body.name).toBe("New Name");

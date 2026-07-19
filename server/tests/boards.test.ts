@@ -91,13 +91,13 @@ describe("board deletion", () => {
     const res = await request(ctx.app).delete(`/boards/${ROOM}`).set("Cookie", memberCookie);
     expect(res.status).toBe(403);
 
-    // Board must still exist
+    // A failed member deletion must leave the board intact.
     const board = await request(ctx.app).get(`/boards/${ROOM}`).set("Cookie", ownerCookie);
     expect(board.status).toBe(200);
   });
 
   it("lets the owner delete the board and wipes its canvas items", async () => {
-    // Seed canvas items directly so the test can observe the cascade delete
+    // Seed an item directly to check board deletion also clears canvas data.
     const { items } = await import("../src/db.js");
     await items().insertMany([
       { _id: "shape-1", roomId: ROOM, kind: "shape", data: { id: "shape-1" } },
@@ -179,9 +179,7 @@ describe("board creation input validation", () => {
   });
 });
 
-// Regression tests for the object-level authorization fix: a logged-in user
-// who is NOT a member of a board must not be able to read or mutate it, even
-// though they hold a valid auth cookie and know the roomId.
+// Knowing a room id and being logged in is not enough without membership.
 describe("board object-level authorization (non-member)", () => {
   const AUTHZ_ROOM = "authz-room";
   let outsiderCookie: string;

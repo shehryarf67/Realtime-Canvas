@@ -17,8 +17,7 @@ type BoxShapeBase = {
   height: number;
   colour: string;
   zIndex: number;
-  // Degrees, clockwise, pivoting on the shape's own centre. Optional so every
-  // item persisted before rotation existed reads back as unrotated (?? 0).
+  // Optional because older saved shapes did not have rotation.
   rotation?: number;
 };
 
@@ -45,8 +44,7 @@ export type TriangleShape = {
   p3: Point;
   colour: string;
   zIndex: number;
-  // Purely a visual transform pivoting on the bounding-box centre — the points
-  // themselves stay put, so bounds/marquee/vertex math is unaffected.
+  // Pen points stay unchanged; rotation is only applied while drawing them.
   rotation?: number;
 };
 

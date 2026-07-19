@@ -2,10 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import request from "supertest";
 import { createTestApp, type TestContext } from "./helpers.js";
 
-// The real mailer talks to SMTP (or creates an Ethereal account over the
-// network). Mock it: capture the reset URL that would have been emailed so
-// the test can walk the same path a user clicking the link would.
-// vi.hoisted because vi.mock calls are hoisted above normal declarations.
+// Capture reset links without touching SMTP. vi.hoisted matches mock hoisting.
 const { sendPasswordResetEmail } = vi.hoisted(() => ({
   sendPasswordResetEmail: vi.fn(async (_to: string, _resetUrl: string) => {}),
 }));
@@ -79,7 +76,7 @@ describe("password reset flow", () => {
     await request(ctx.app).post("/auth/forgot-password").send({ email: USER.email });
     const token = lastEmailedToken();
 
-    // Age the token in the DB rather than waiting an hour
+    // Expire the token directly instead of waiting an hour.
     const { users } = await import("../src/db.js");
     await users().updateOne({ email: USER.email }, { $set: { resetTokenExpiresAt: Date.now() - 1000 } });
 
@@ -103,7 +100,7 @@ describe("password reset flow", () => {
     const short = await request(ctx.app).post("/auth/reset-password").send({ token, password: "short" });
     expect(short.status).toBe(400);
 
-    // Token must still be valid after the rejected attempt
+    // A rejected short password must not consume the token.
     const ok = await request(ctx.app).post("/auth/reset-password").send({ token, password: "long-enough-pass" });
     expect(ok.status).toBe(200);
   });

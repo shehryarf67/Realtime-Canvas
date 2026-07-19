@@ -19,14 +19,12 @@ const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour
 const AUTH_COOKIE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 const MAX_DISPLAY_NAME_LENGTH = 80;
 
-// Per-IP limits on the credential endpoints. Without these, login is free to
-// brute-force and forgot-password can be used to bomb someone's inbox.
-// /me and /logout stay unlimited — they're harmless and called on every page.
+// I rate limit credential routes to slow password guessing and email spam.
+// /me and /logout stay open because the app calls them often.
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 10,
-  // Only failed attempts count toward the limit, so a user who logs in and
-  // out repeatedly (or a shared office IP) isn't locked out by successes.
+  // Successful logins should not use up the shared IP limit.
   skipSuccessfulRequests: true,
   standardHeaders: true,
   legacyHeaders: false,
@@ -41,12 +39,10 @@ const signupLimiter = rateLimit({
   message: { error: "Too many accounts created from this address. Try again later." },
 });
 
-// Separate instances (not one shared limiter): forgot-password and
-// reset-password would otherwise drain a single per-IP bucket together,
-// and a user who requested two emails couldn't complete a legitimate reset.
+// These need separate buckets or requesting an email could block using it.
 const forgotPasswordLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
-  limit: 5, // each one sends an email — the abusable part, so strictest
+  limit: 5, // Email sending gets the strictest limit.
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: "Too many password reset requests. Try again later." },
@@ -54,15 +50,13 @@ const forgotPasswordLimiter = rateLimit({
 
 const resetPasswordLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
-  limit: 10, // tokens are 256-bit — this guards volume, not brute force
+  limit: 10, // The token is strong; this limit mainly controls request volume.
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: "Too many attempts. Try again later." },
 });
 
-// Changing credentials and deleting an account both verify the current
-// password. Keep those checks rate-limited per signed-in account so a stolen
-// browser session cannot be used for unlimited password guesses.
+// A stolen session should not get unlimited guesses at the current password.
 const changePasswordLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 5,
@@ -121,17 +115,14 @@ router.post("/signup", signupLimiter, async (req, res) => {
     return;
   }
 
-  // Check if user already exists
   const existing = await users().findOne({ email });
   if (existing) {
     res.status(409).json({ error: "Email already in use" });
     return;
   }
 
-  // Hash the password before storing it
   const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
 
-  // Insert the new user
   const trimmedName = name.trim();
   const result = await users().insertOne({
     name: trimmedName,
@@ -141,8 +132,7 @@ router.post("/signup", signupLimiter, async (req, res) => {
     tokenVersion: 0,
   });
 
-  // Send the token as an HTTP-only cookie so JS can't read it. Flags come
-  // from config: Secure + SameSite=None in production (cross-site), Lax in dev.
+  // The cookie is HTTP-only, with production and local flags set in config.ts.
   setAuthCookie(res, { _id: result.insertedId, name: trimmedName, email, tokenVersion: 0 });
 
   res.status(201).json({ userId: result.insertedId, name: trimmedName, email });
@@ -151,31 +141,26 @@ router.post("/signup", signupLimiter, async (req, res) => {
 router.post("/login", loginLimiter, async (req, res) => {
   const { email, password } = req.body;
 
-  // Validate types before querying: express.json() lets these be arbitrary
-  // objects, and an object like {"$ne": null} would be interpreted as a Mongo
-  // query operator (NoSQL injection). Requiring strings closes that off. Same
-  // generic 401 as a wrong password, so this can't be used as an oracle to
-  // distinguish malformed input from a real account.
+  // Type checks stop Mongo operators from being passed as email or password.
+  // The generic reply also avoids exposing which accounts exist.
   if (!isValidEmail(email) || !isNonEmptyString(password)) {
     res.status(401).json({ error: "Invalid email or password" });
     return;
   }
 
-  // Find the user by email
   const user = await users().findOne({ email });
   if (!user) {
     res.status(401).json({ error: "Invalid email or password" });
     return;
   }
 
-  // Compare the provided password against the stored hash
   const match = await bcrypt.compare(password, user.passwordHash);
   if (!match) {
     res.status(401).json({ error: "Invalid email or password" });
     return;
   }
 
-  // Carry the current tokenVersion so a later credential change can revoke it.
+  // tokenVersion lets a later password change cancel this cookie.
   setAuthCookie(res, user);
 
   res.status(200).json({ userId: user._id, name: user.name, email: user.email });
@@ -188,8 +173,7 @@ router.get("/me", async (req, res) => {
     return;
   }
 
-  // verifyToken also rejects tokens superseded by a password reset, so /me
-  // reflects revoked sessions rather than trusting the JWT signature alone.
+  // /me uses the full version check instead of only trusting the JWT signature.
   const decoded = await verifyToken(token);
   if (!decoded) {
     res.status(401).json({ error: "Invalid or expired token" });
@@ -199,10 +183,7 @@ router.get("/me", async (req, res) => {
 });
 
 router.post("/logout", (_req, res) => {
-  // clearCookie must send the same flags the cookie was set with — a
-  // Secure/SameSite=None cookie is a different cookie from the browser's
-  // point of view, and clearing without the flags silently does nothing
-  // in production.
+  // Clearing needs the same flags used when the cookie was created.
   res.clearCookie(AUTH_COOKIE_NAME, AUTH_COOKIE_OPTIONS);
   res.status(200).json({ ok: true });
 });
@@ -228,8 +209,7 @@ router.patch("/profile", requireAuth, async (req, res) => {
     return;
   }
 
-  // Refresh this browser's JWT so client-side state and future socket
-  // connections immediately use the new display name.
+  // Refresh the cookie so new socket connections get the changed name.
   setAuthCookie(res, user);
   res.status(200).json({ userId: user._id, name: user.name, email: user.email });
 });
@@ -274,8 +254,7 @@ router.post("/change-password", requireAuth, changePasswordLimiter, async (req, 
     return;
   }
 
-  // All old cookies now fail tokenVersion verification. Give only this
-  // browser a fresh cookie so the person changing the password stays signed in.
+  // Old cookies are now invalid. This browser gets the only fresh one.
   setAuthCookie(res, updatedUser);
   disconnectUserSockets(String(updatedUser._id));
   res.status(200).json({ ok: true });
@@ -306,8 +285,7 @@ router.delete("/account", requireAuth, deleteAccountLimiter, async (req, res) =>
     notifyBoardDeleted(board.roomId);
   }
 
-  // Shared boards remain for their owners, but the deleted account no longer
-  // appears in their membership lists.
+  // Keep other people's boards and only remove this user from their members.
   await boards().updateMany(
     { memberIds: userId },
     { $pull: { memberIds: userId } }
@@ -328,8 +306,7 @@ router.post("/forgot-password", forgotPasswordLimiter, async (req, res) => {
 
   const user = await users().findOne({ email });
   if (!user) {
-    // Same response whether or not the account exists, so this endpoint
-    // can't be used to discover which emails are registered.
+    // Always return success here so registered emails cannot be discovered.
     res.status(200).json({ ok: true });
     return;
   }
@@ -383,8 +360,7 @@ router.post("/reset-password", resetPasswordLimiter, async (req, res) => {
     {
       $set: { passwordHash },
       $unset: { resetTokenHash: "", resetTokenExpiresAt: "" },
-      // Invalidate every session issued before this reset — any existing JWT
-      // carries the old tokenVersion and will now fail verifyToken.
+      // Bumping the version cancels every cookie issued before this reset.
       $inc: { tokenVersion: 1 },
     }
   );

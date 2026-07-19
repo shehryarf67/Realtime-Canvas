@@ -1,11 +1,8 @@
 import { MongoMemoryServer } from "mongodb-memory-server";
 import type { Express } from "express";
 
-// Everything the app needs must be in process.env BEFORE src modules load,
-// because config.ts reads (and validates) env at import time. That's why the
-// app is imported dynamically here, after the in-memory Mongo is up — a
-// static `import { buildApp } from "../src/app.js"` at the top of a test
-// file would evaluate config.ts before any env was set and exit the process.
+// Config is read during import, so tests set env and start Mongo before loading
+// the app modules dynamically.
 export type TestContext = {
   app: Express;
   mongo: MongoMemoryServer;
@@ -36,8 +33,7 @@ export async function createTestApp(env: Record<string, string> = {}): Promise<T
   };
 }
 
-// Pull the auth cookie ("token=...") out of a supertest response so it can be
-// replayed on subsequent requests, the way a browser would.
+// Keep only token=name from Set-Cookie so Supertest can replay the session.
 export function getAuthCookie(res: { headers: Record<string, unknown> }): string {
   const setCookie = res.headers["set-cookie"];
   const cookies: string[] = Array.isArray(setCookie) ? setCookie : [String(setCookie ?? "")];

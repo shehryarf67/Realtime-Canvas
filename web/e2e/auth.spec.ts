@@ -4,7 +4,7 @@ import { signUp, logIn, uniqueUser } from "./helpers";
 test.describe("authentication", () => {
   test("sign up lands on an authenticated landing page", async ({ page }) => {
     const user = await signUp(page);
-    // Authenticated landing shows the user's name and the primary action.
+    // Successful signup should land in the signed-in state.
     await expect(page.getByText(user.name)).toBeVisible();
     await expect(page.getByRole("button", { name: "New board" })).toBeVisible();
   });
@@ -17,10 +17,9 @@ test.describe("authentication", () => {
     await page.getByLabel("Password", { exact: true }).fill("short"); // < 8 chars
     await page.getByRole("button", { name: "Create account" }).click();
 
-    // Scope to the red error paragraph — the field hint also says
-    // "At least 8 characters.", so match the error specifically.
+    // Scope this to the error because the field hint has similar text.
     await expect(page.locator("p.text-red-600")).toContainText(/at least 8 characters/i);
-    // Still on the signup page — no account created.
+    // Invalid signup stays on the form.
     await expect(page).toHaveURL(/\/signup$/);
   });
 
@@ -39,7 +38,7 @@ test.describe("authentication", () => {
     const user = await signUp(page);
 
     await page.getByRole("button", { name: "Log out" }).click();
-    // Logged-out landing offers account creation / sign in.
+    // Logout restores the public actions.
     await expect(page.getByRole("link", { name: "Create an account" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Log out" })).toHaveCount(0);
 

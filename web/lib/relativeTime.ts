@@ -1,5 +1,4 @@
-// "just now" / "5m ago" / "3h ago" / "2d ago", falling back to a date for
-// anything older than a week.
+// Keep recent times short, then show a real date after one week.
 export function relativeTime(timestamp: number): string {
   const minutes = Math.floor((Date.now() - timestamp) / 60_000);
   if (minutes < 1) return "just now";

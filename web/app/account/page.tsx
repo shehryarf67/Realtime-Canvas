@@ -9,6 +9,7 @@ import { useRequireAuth } from "@/hooks/useRequireAuth";
 const SERVER_URL = process.env.NEXT_PUBLIC_SERVER_URL;
 
 async function responseError(response: Response, fallback: string): Promise<string> {
+  // Some server failures may not contain JSON, so forms still need a useful message.
   try {
     const data = await response.json();
     return typeof data.error === "string" ? data.error : fallback;
@@ -85,6 +86,7 @@ function AccountSettings({
     }
   }
 
+  // The server checks the current password again and cancels every older session.
   async function handlePassword(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (newPassword.length < 8) {
@@ -120,6 +122,7 @@ function AccountSettings({
     }
   }
 
+  // Account deletion needs both the password and an exact typed confirmation.
   async function handleDelete(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (deleteConfirmation !== "DELETE") return;

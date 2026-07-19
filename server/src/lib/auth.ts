@@ -9,14 +9,8 @@ export type AuthPayload = {
   tokenVersion: number;
 };
 
-// Single source of truth for accepting a token. Verifies the JWT signature AND
-// that its tokenVersion still matches the user's current value in the DB, so a
-// tokenVersion bump (e.g. on password reset) invalidates every token issued
-// before it. Returns the payload on success, or null if the token is
-// invalid/expired/superseded or the user no longer exists.
-//
-// We look the user up by email (carried in the signed token, and unique) to
-// avoid converting the JWT's stringified userId back into an ObjectId.
+// This is the one place that accepts JWTs. The DB version check lets password
+// changes cancel old tokens. Email is used because it is signed and unique.
 export async function verifyToken(token: string): Promise<AuthPayload | null> {
   let decoded: AuthPayload;
   try {
@@ -29,9 +23,7 @@ export async function verifyToken(token: string): Promise<AuthPayload | null> {
   if (!user) return null;
   if ((user.tokenVersion ?? 0) !== (decoded.tokenVersion ?? 0)) return null;
 
-  // Profile fields come from the database rather than the possibly stale JWT.
-  // This makes a display-name change visible to every existing session the
-  // next time it makes a request, without weakening token verification.
+  // I return current DB values so an older cookie still sees profile updates.
   return {
     userId: String(user._id),
     name: user.name,

@@ -5,9 +5,7 @@ import { CLIENT_ORIGIN, AUTH_COOKIE_NAME } from "./config.js";
 import { verifyToken } from "./lib/auth.js";
 import { logger } from "./lib/logger.js";
 
-// Socket.IO's handshake never passes through Express's cookie-parser
-// middleware, so the "token" cookie has to be pulled out of the raw
-// Cookie header by hand.
+// Socket handshakes skip Express middleware, so I read the auth cookie here.
 function readCookie(cookieHeader: string | undefined, name: string): string | undefined {
   if (!cookieHeader) return undefined;
   const match = cookieHeader
@@ -23,19 +21,15 @@ type CanvasMessage =
 
 const VALID_KINDS: readonly Kind[] = ["shape", "note", "text"];
 
-// Caps the text content stored on a note/text box. The whole message is
-// already bounded by maxHttpBufferSize (256KB); this is a tighter, per-field
-// bound so a single item can't hold an absurd amount of text.
+// The socket has a total message limit, but text fields need their own cap too.
 const MAX_TEXT_LENGTH = 20_000;
 
 function isValidId(id: unknown): id is Id {
   return typeof id === "string" || typeof id === "number";
 }
 
-// Clients are authenticated and room-authorized, but still untrusted — a
-// malformed message shouldn't reach the DB or get rebroadcast. Accept only the
-// exact shapes we're willing to persist: a known kind, a valid action, and a
-// primitive id in the right place.
+// Socket data is still untrusted after login, so I validate it before saving
+// or broadcasting anything.
 export function isValidCanvasMessage(message: unknown): message is CanvasMessage {
   if (typeof message !== "object" || message === null) return false;
   const m = message as Record<string, unknown>;
@@ -48,7 +42,7 @@ export function isValidCanvasMessage(message: unknown): message is CanvasMessage
     if (typeof m.payload !== "object" || m.payload === null) return false;
     const p = m.payload as Record<string, unknown>;
     if (!isValidId(p.id)) return false;
-    // Notes and text boxes carry a `text` field — reject oversized content.
+    // Stop a single note or text box from storing too much text.
     if ((m.kind === "note" || m.kind === "text") && typeof p.text === "string" && p.text.length > MAX_TEXT_LENGTH) {
       return false;
     }
@@ -57,29 +51,22 @@ export function isValidCanvasMessage(message: unknown): message is CanvasMessage
   return false;
 }
 
-// roomId -> userId -> how many open sockets that user currently has in the
-// room. A user open in two tabs should only ever produce one user-joined and
-// one user-left broadcast, not one per socket.
+// roomId -> userId -> open tab count. Presence should show a person once even
+// when they have the same board open in several tabs.
 const roomPresence = new Map<string, Map<string, { name: string; count: number }>>();
 
-// Rooms whose board has been deleted. Checked before any write, so a
-// shape-message already in flight when the delete happens can't resurrect an
-// items document for a board that no longer exists. Entries are evicted after
-// a grace period (see notifyBoardDeleted) so the set can't grow without bound
-// over a long-running process.
+// Deleted rooms stay blocked briefly so a late socket write cannot recreate
+// canvas data after the board is gone.
 const deletedRoomIds = new Set<string>();
 
-// The guard only needs to outlast any shape-message in flight at delete time
-// (milliseconds); a few minutes is a very safe margin before forgetting.
+// Five minutes is much longer than any write that was already in flight.
 const DELETED_ROOM_TTL_MS = 5 * 60 * 1000;
 
 let ioInstance: Server | null = null;
 
 export function initSocketServer(httpServer: HTTPServer): Server {
   const io = new Server(httpServer, {
-    // Cap a single inbound message. Default is 1MB; one canvas item (even a
-    // long pen stroke) is far smaller, so 256KB is generous while stopping a
-    // client from pushing oversized blobs into the DB / broadcast.
+    // A canvas item should never need more than 256 KB, including pen strokes.
     maxHttpBufferSize: 256 * 1024,
     cors: {
       origin: CLIENT_ORIGIN,
@@ -96,8 +83,7 @@ export function initSocketServer(httpServer: HTTPServer): Server {
       return;
     }
 
-    // Same check as the REST middleware: signature + tokenVersion, so a socket
-    // can't be opened with a token invalidated by a password reset.
+    // Sockets use the same signature and session-version checks as REST.
     const payload = await verifyToken(token);
     if (!payload) {
       next(new Error("Invalid or expired token"));
@@ -184,13 +170,12 @@ export function initSocketServer(httpServer: HTTPServer): Server {
       const authorizedRooms = socket.data.authorizedRooms as Set<string> | undefined;
       if (!authorizedRooms?.has(roomId)) return;
       if (deletedRoomIds.has(roomId)) return;
-      if (!isValidCanvasMessage(message)) return; // drop malformed messages
+      if (!isValidCanvasMessage(message)) return; // Ignore malformed socket data.
 
       try {
         const col = items();
         if (message.action === "delete"){
-          // Scope by roomId as well as _id so a member of one board can't
-          // delete an item belonging to another board by its id.
+          // Include roomId so an item id from another board cannot be deleted.
           await col.deleteOne({_id: message.id, roomId});
         }
         else {
@@ -216,9 +201,7 @@ export function initSocketServer(httpServer: HTTPServer): Server {
       const authorizedRooms = socket.data.authorizedRooms as Set<string> | undefined;
       if (!authorizedRooms?.has(roomId)) return;
 
-      // Name comes from the trusted, JWT-derived socket.data.name — NOT from
-      // the client payload — so a user can't spoof another person's name on
-      // their cursor. x/y are ephemeral and not persisted.
+      // Use the signed name, not a client value, so cursor names cannot be faked.
       socket.to(roomId).emit("cursor-move", { userId: socket.data.userId, x, y, name: socket.data.name });
     })
 
@@ -246,22 +229,17 @@ export function initSocketServer(httpServer: HTTPServer): Server {
   return io;
 }
 
-// Called from the REST DELETE /boards/:roomId route once a board and its
-// items are actually gone, so this module never needs to import the Express
-// router (which would create a circular import back to index.ts).
+// The board route calls this after deletion to clear the live room safely.
 export function notifyBoardDeleted(roomId: string): void {
   deletedRoomIds.add(roomId);
   ioInstance?.to(roomId).emit("board-deleted");
   ioInstance?.socketsLeave(roomId);
-  // Forget the room after the grace period. unref() so this timer never keeps
-  // the process alive on shutdown.
+  // unref keeps this cleanup timer from holding the server open on shutdown.
   setTimeout(() => deletedRoomIds.delete(roomId), DELETED_ROOM_TTL_MS).unref();
 }
 
-// JWT revocation prevents new REST requests and socket handshakes, but a
-// socket that is already connected has passed its handshake already. Close
-// every live connection for the user when credentials change or the account
-// is deleted so that access ends immediately rather than on the next refresh.
+// Existing sockets already passed login, so I close them when sessions are
+// cancelled or an account is deleted.
 export function disconnectUserSockets(userId: string): void {
   if (!ioInstance) return;
   for (const socket of ioInstance.sockets.sockets.values()) {

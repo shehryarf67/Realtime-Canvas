@@ -1,14 +1,13 @@
 name: CI
 
-# Run the full check suite on every push to main and every PR targeting it.
+# Run all checks for main and pull requests.
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
 
-# A newer push to the same branch cancels an in-progress run for it, so we
-# don't waste minutes testing a commit that's already been superseded.
+# Only keep the newest run for each branch or pull request.
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -16,8 +15,7 @@ concurrency:
 jobs:
   server:
     name: Server — typecheck + tests
-    # Pinned to 22.04: mongodb-memory-server (used by the tests) downloads a
-    # mongod binary that is most reliable on this image.
+    # Mongo memory tests are most reliable on this pinned image.
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
@@ -41,8 +39,7 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
-      # `next build` runs the TypeScript typecheck as part of the build.
-      # A placeholder API URL is inlined at build time; it isn't exercised here.
+      # Next build includes type checking. The API URL is only needed at build time.
       - name: Build (includes typecheck)
         run: npm run build -w web
         env:
@@ -58,16 +55,14 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
-      # Only chromium is needed; --with-deps pulls the required OS libraries.
+      # E2E only targets Chromium, including its required OS packages.
       - name: Install Playwright browser
         run: npx playwright install --with-deps chromium
         working-directory: web
-      # The Playwright config starts the in-memory-Mongo API and the web dev
-      # server itself (reuseExistingServer is off when CI=true, which GitHub
-      # sets automatically), so no manual server startup is needed here.
+      # Playwright starts both test servers from its config.
       - name: Run E2E tests
         run: npm run test:e2e -w web
-      # Keep the HTML report on failure so a red run is debuggable.
+      # Keep the report when E2E fails.
       - name: Upload Playwright report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4

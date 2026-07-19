@@ -1,9 +1,8 @@
 import nodemailer, { type Transporter } from "nodemailer";
 import { logger } from "./logger.js";
 
-// Uses real SMTP credentials when they're configured in .env. Otherwise falls
-// back to an Ethereal test account: mail isn't actually delivered, but each
-// send logs a preview URL you can open in the browser to see the email.
+// Real SMTP is used when configured. Otherwise I use Ethereal and log a preview
+// link, which keeps local password-reset testing simple.
 const MAIL_FROM = process.env.MAIL_FROM || '"coboard" <no-reply@coboard.local>';
 
 let transporterPromise: Promise<{ transporter: Transporter; isEthereal: boolean }> | null = null;

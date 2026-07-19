@@ -5,9 +5,8 @@ import { logger } from "./lib/logger.js";
 export type Id = string | number;
 export type Kind = "shape" | "note" | "text";
 
-// One document per canvas item. `_id` is the item's own id, so add/update is an
-// upsert keyed by _id and delete is a deleteOne by _id. `data` holds the full
-// shape/note/text object exactly as the client sent it.
+// Each canvas item is its own document. I reuse the client item id as _id so
+// updates can upsert and deletes can target the same value.
 export type CanvasItemDoc = {
   _id: Id;
   roomId: string;
@@ -23,9 +22,7 @@ export type User = {
   createdAt: number;
   resetTokenHash?: string;
   resetTokenExpiresAt?: number;
-  // Bumped whenever every existing session must be invalidated (e.g. password
-  // reset). A token is only accepted while its tokenVersion still matches the
-  // user's current value, so old tokens stop working after a bump.
+  // I bump this when all old sessions need to stop working.
   tokenVersion?: number;
 }
 
@@ -39,7 +36,7 @@ export type Board = {
   lastEditedAt: number;
 }
 
-// Presence is validated (with a clear error) in config.ts at startup.
+// config.ts makes sure the URI exists before this client is created.
 const client = new MongoClient(MONGODB_URI);
 
 let itemsCollection: Collection<CanvasItemDoc> | null = null;
@@ -58,8 +55,7 @@ export async function connectToDatabase(): Promise<void> {
   logger.info("connected to MongoDB");
 }
 
-// Used by the graceful-shutdown handler so in-flight writes finish cleanly
-// when the host sends SIGTERM on redeploy/scale-down.
+// Used during shutdown so Mongo can finish any current writes.
 export async function closeDatabase(): Promise<void> {
   await client.close();
 }

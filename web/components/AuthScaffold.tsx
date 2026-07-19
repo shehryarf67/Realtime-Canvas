@@ -3,19 +3,12 @@
 import Link from "next/link";
 import { useState, type ReactNode } from "react";
 
-/**
- * Shared shell for the login / signup pages. Carries the same visual language as
- * the landing page (soft off-white base, visible dot grid, cool light wash, brand
- * lockmark, and the left-aligned column hung off a vertical rule). Purely
- * presentational — no auth logic lives here.
- */
+// Shared visual shell for auth pages. The actual auth logic stays in each form.
 type AuthScaffoldProps = {
   eyebrow: string;
   title: string;
   subtitle: string;
-  /** The form. */
   children: ReactNode;
-  /** Switch-page line shown beneath the form. */
   footer: ReactNode;
 };
 
@@ -28,20 +21,18 @@ export default function AuthScaffold({
 }: AuthScaffoldProps) {
   return (
     <main className="relative min-h-screen w-full overflow-hidden bg-[#f4f6fb] text-neutral-900">
-      {/* Dot-grid background — same calm, eye-friendly base as the landing */}
+      {/* Same background as the landing page. */}
       <div
         aria-hidden="true"
         className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle,_#94a3b8_1.3px,_transparent_1.4px)] bg-[length:24px_24px] opacity-50"
       />
 
-      {/* Soft cool light wash so the page reads as lit, not flat */}
       <div
         aria-hidden="true"
         className="pointer-events-none absolute -right-40 -top-40 h-[34rem] w-[34rem] rounded-full bg-[radial-gradient(circle,_#dbeafe_0%,_transparent_70%)] opacity-70 blur-2xl"
       />
 
-      {/* Quiet canvas atmosphere echoing the landing — kept static so the form stays
-          the focus. Non-interactive and hidden until there is room. */}
+      {/* Decorative canvas pieces stay hidden on smaller screens. */}
       <div
         aria-hidden="true"
         className="pointer-events-none absolute inset-0 hidden select-none xl:block"
@@ -76,10 +67,8 @@ export default function AuthScaffold({
         </div>
       </div>
 
-      {/* Foreground — left-aligned column hung off a vertical rule, matching the landing */}
       <div className="relative z-10 mx-auto flex min-h-screen w-full max-w-6xl items-center px-6 sm:px-10">
         <div className="w-full max-w-md border-l border-neutral-200 pl-6 sm:pl-10">
-          {/* Brand lockmark + wordmark — links home */}
           <Link
             href="/"
             className="inline-flex items-center gap-3 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-900"
@@ -95,7 +84,6 @@ export default function AuthScaffold({
             </span>
           </Link>
 
-          {/* Eyebrow + headline + subhead */}
           <p className="mt-12 font-mono text-xs font-normal tracking-tight text-neutral-500">
             {eyebrow}
           </p>
@@ -106,10 +94,8 @@ export default function AuthScaffold({
             {subtitle}
           </p>
 
-          {/* Form */}
           <div className="mt-8">{children}</div>
 
-          {/* Switch-page line */}
           <div className="mt-8 text-sm font-normal text-neutral-500">{footer}</div>
         </div>
       </div>
@@ -117,7 +103,7 @@ export default function AuthScaffold({
   );
 }
 
-/** A labelled text/email field styled to match the landing's inputs. */
+// Reused fields keep login, signup and reset forms consistent.
 export function AuthField({
   id,
   label,
@@ -163,7 +149,6 @@ export function AuthField({
   );
 }
 
-/** A password field with a Show/Hide toggle nested in the input border. */
 export function PasswordField({
   id,
   label,

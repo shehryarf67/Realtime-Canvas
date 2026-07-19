@@ -1,8 +1,5 @@
-// Minimal dependency-free structured logger. Emits one JSON object per line
-// (level, time, message, and optional context) so a log aggregator can parse
-// and filter fields instead of scraping free text. Errors passed in the
-// context are serialized with name/message/stack (a plain JSON.stringify of an
-// Error yields "{}", losing everything).
+// One JSON object per log line keeps production logs searchable. The replacer
+// is needed because JSON.stringify normally turns Error objects into {}.
 
 type Level = "info" | "warn" | "error";
 

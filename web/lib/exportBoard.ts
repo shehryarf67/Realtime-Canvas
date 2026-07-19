@@ -1,13 +1,11 @@
 import type { CanvasState, Shape, Note, TextBox } from "@/types/shape";
 
-// Renders the board to a standalone SVG string and downloads it as SVG or PNG.
-// Mirrors CanvasEditor's rendering (fixed 1600x900 logical space, per-item
-// rotation, z-order) so an export matches what's on screen.
+// Export uses the same 1600x900 space, rotation and stacking as the editor.
 
 const VIEW_W = 1600;
 const VIEW_H = 900;
 
-// Escape user-authored text so it can't break the SVG markup (or inject nodes).
+// User text must not be able to add its own SVG markup.
 function esc(s: string): string {
   return s.replace(/[<>&"']/g, (c) => {
     switch (c) {
@@ -20,7 +18,7 @@ function esc(s: string): string {
   });
 }
 
-// SVG rotate() about a pivot, matching the live editor's "rotate around centre".
+// Rotate around the same item centre used by the editor.
 function rot(rotation: number | undefined, cx: number, cy: number): string {
   return rotation ? ` transform="rotate(${rotation} ${cx} ${cy})"` : "";
 }
@@ -60,8 +58,7 @@ function shapeSvg(shape: Shape): string {
   }
 }
 
-// Splits text on explicit newlines into tspans. (No word-wrap — long single
-// lines are clipped to the item's box, same visual bound as the live canvas.)
+// Explicit newlines become tspans. Long lines are clipped like the live canvas.
 function textTspans(text: string, x: number, yStart: number, lineHeight: number): string {
   return text
     .split("\n")
@@ -97,7 +94,7 @@ function textBoxSvg(t: TextBox): string {
 }
 
 export function buildBoardSvg(state: CanvasState): string {
-  // One combined list sorted by z-index, so paint order matches the canvas.
+  // All item types share one z-order on the canvas and in exports.
   const entries: { z: number; svg: string }[] = [
     ...state.shapes.map((s) => ({ z: s.zIndex ?? 0, svg: shapeSvg(s) })),
     ...state.notes.map((n) => ({ z: n.zIndex ?? 0, svg: noteSvg(n) })),
@@ -123,7 +120,7 @@ function triggerDownload(blob: Blob, filename: string): void {
   URL.revokeObjectURL(url);
 }
 
-// board name -> safe filename base
+// Turn the board name into a safe download filename.
 function safeName(name: string): string {
   const cleaned = name.trim().replace(/[^\w.-]+/g, "-").replace(/^-+|-+$/g, "");
   return cleaned.length > 0 ? cleaned : "board";
@@ -140,9 +137,7 @@ export async function downloadBoardPng(state: CanvasState, boardName: string): P
   triggerDownload(blob, `${safeName(boardName)}.png`);
 }
 
-// Rasterises the SVG by loading it into an <img> and painting onto a canvas at
-// 2x for a crisp export. The SVG references no external resources, so the
-// canvas stays untainted and toBlob() succeeds.
+// PNG export paints the SVG at 2x for a sharper result.
 function svgToPngBlob(svg: string): Promise<Blob> {
   return new Promise((resolve, reject) => {
     const svgUrl = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml;charset=utf-8" }));

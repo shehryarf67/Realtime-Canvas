@@ -21,6 +21,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    // The token is HTTP-only, so /me is the safe way to restore login on load.
     fetch(`${process.env.NEXT_PUBLIC_SERVER_URL}/auth/me`, {
       credentials: "include",
     })

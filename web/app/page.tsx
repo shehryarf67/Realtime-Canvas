@@ -53,7 +53,7 @@ export default function Home() {
       await addBoard(board);
       router.push(`/room/${roomCode}`);
     } catch {
-      // Recover so the primary action can never get stuck disabled.
+      // Let the user retry if board creation fails.
       setCreating(false);
     }
   }
@@ -83,27 +83,23 @@ export default function Home() {
 
   return (
     <main className="relative min-h-screen w-full overflow-hidden bg-[#f4f6fb] text-neutral-900">
-      {/* Dot-grid background — slate dots on a soft cool off-white read clearly without harsh contrast */}
+      {/* Main dot-grid background. */}
       <div
         aria-hidden="true"
         className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle,_#94a3b8_1.3px,_transparent_1.4px)] bg-[length:24px_24px] opacity-50"
       />
 
-      {/* Soft cool light wash so the page reads as lit, not flat */}
       <div
         aria-hidden="true"
         className="pointer-events-none absolute -right-40 -top-40 h-[34rem] w-[34rem] rounded-full bg-[radial-gradient(circle,_#dbeafe_0%,_transparent_70%)] opacity-70 blur-2xl"
       />
 
-      {/* Ghosted, purely-atmospheric canvas elements — a small connected mini-canvas
-          parked in the right margin. Non-interactive and hidden until there is room.
-          Everything here is gently animated to suggest a live, collaborative board. */}
+      {/* Decorative live-board preview, only shown when there is enough room. */}
       <div
         aria-hidden="true"
         className="pointer-events-none absolute inset-0 hidden select-none xl:block"
       >
-        {/* Keyframes scoped to this atmospheric layer. All motion is paused under
-            prefers-reduced-motion so the page stays calm for those who ask for it. */}
+        {/* Keep decorative motion off when the user prefers reduced motion. */}
         <style>{`
           @keyframes co-maya-move {
             0%   { transform: translate(0, 0); }
@@ -123,7 +119,7 @@ export default function Home() {
             0%, 100% { filter: drop-shadow(0 0 0 transparent); }
             50%      { filter: drop-shadow(0 0 7px var(--co-glow)); }
           }
-          /* A click ripple that fires once per loop, timed to a path waypoint. */
+          /* Cursor click ripple. */
           @keyframes co-click {
             0%, 42%   { transform: scale(0); opacity: 0; }
             46%       { transform: scale(0.35); opacity: 0.55; }
@@ -136,7 +132,7 @@ export default function Home() {
             80%  { transform: translate(60px, -14px) rotate(4deg); }
             100% { transform: translate(0, 0) rotate(0deg); }
           }
-          /* Shape being added then removed, over and over. */
+          /* Shape appearing and disappearing. */
           @keyframes co-pop {
             0%, 6%    { opacity: 0; transform: scale(0.6); }
             14%, 82%  { opacity: 1; transform: scale(1); }
@@ -165,7 +161,7 @@ export default function Home() {
           }
         `}</style>
 
-        {/* Outlined rectangle + ring joined by a dashed connector whose dots land on each shape */}
+        {/* Connected canvas shapes. */}
         <svg
           className="absolute right-[7rem] top-[7rem] h-72 w-80 opacity-60"
           viewBox="0 0 320 288"
@@ -185,10 +181,8 @@ export default function Home() {
           <circle cx="190" cy="150" r="3.5" fill="#f43f5e" />
         </svg>
 
-        {/* Small amber square accent — being dragged around the board */}
         <div className="co-square absolute right-[24rem] top-[9rem] h-6 w-6 border border-[#f59e0b]/60 opacity-70" />
 
-        {/* Slightly tilted sticky note with short handwritten-feeling text */}
         <div className="absolute right-[9rem] bottom-[8rem] w-44 -rotate-6 bg-[#fef3c7] px-4 py-3 opacity-90 shadow-[0_10px_28px_-14px_rgba(120,90,20,0.5)]">
           <p className="text-[15px] font-normal leading-snug text-amber-900/80 [font-family:'Comic_Sans_MS','Segoe_Print','Bradley_Hand',cursive]">
             let&apos;s map this out together →
@@ -198,7 +192,7 @@ export default function Home() {
           </span>
         </div>
 
-        {/* Live presence cursors — wandering, clicking and glowing as if driven by a teammate */}
+        {/* Animated teammate cursors. */}
         <div
           className="co-cursor co-maya absolute right-[26rem] top-[19rem]"
           style={{ ["--co-glow" as string]: "rgba(20,184,166,0.7)" }}
@@ -225,10 +219,8 @@ export default function Home() {
         </div>
       </div>
 
-      {/* Foreground — left-aligned column hung off a vertical rule (not a centered card) */}
       <div className="relative z-10 mx-auto flex min-h-screen w-full max-w-6xl items-center px-6 sm:px-10">
         <div className="w-full max-w-2xl border-l border-neutral-200 pl-6 sm:pl-10">
-          {/* Brand lockmark + wordmark + user actions */}
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-3">
               <svg aria-hidden="true" viewBox="0 0 32 32" className="h-8 w-8 shrink-0">
@@ -259,7 +251,6 @@ export default function Home() {
             )}
           </div>
 
-          {/* Eyebrow + headline + subhead */}
           <p className="mt-12 font-mono text-xs font-normal tracking-tight text-neutral-500">
             Realtime collaborative canvas
           </p>
@@ -271,10 +262,9 @@ export default function Home() {
             no setup, no waiting.
           </p>
 
-          {/* Actions — swap based on auth state */}
+          {/* Signed-in users get board actions; everyone else gets auth links. */}
           {auth?.user ? (
             <div className="mt-10 flex flex-col gap-6 sm:flex-row sm:items-stretch sm:gap-8">
-              {/* Loud primary action */}
               <button
                 type="button"
                 onClick={handleCreate}
@@ -295,7 +285,6 @@ export default function Home() {
                 {creating ? "Creating board…" : "New board"}
               </button>
 
-              {/* Quieter — join an existing board */}
               <form
                 onSubmit={handleJoin}
                 noValidate
@@ -359,7 +348,7 @@ export default function Home() {
             </div>
           )}
 
-          {/* Recent boards — compact strip; the full gallery lives at /boards */}
+          {/* Keep the landing page short; the full list lives at /boards. */}
           {auth?.user && boards.length > 0 && (
             <div className="mt-14">
               <div className="flex items-baseline justify-between">

@@ -6,7 +6,7 @@ test.describe("boards", () => {
     await signUp(page);
     await createBoard(page);
 
-    // Room chrome is present: the editable name and a toolbar tool.
+    // The room is ready once its name and toolbar are visible.
     await expect(page.getByPlaceholder("Untitled Board")).toBeVisible();
     await expect(page.getByRole("button", { name: "Square" })).toBeVisible();
   });
@@ -27,7 +27,7 @@ test.describe("boards", () => {
     const nameField = page.getByPlaceholder("Untitled Board");
     await nameField.fill("Sprint Planning");
 
-    // Blur (Enter) triggers the PATCH; wait for it before reloading.
+    // Enter blurs the field and sends the rename request.
     const patch = page.waitForResponse(
       (r) => r.request().method() === "PATCH" && /\/boards\//.test(r.url())
     );
@@ -42,11 +42,10 @@ test.describe("boards", () => {
     await signUp(page);
     await createBoard(page);
 
-    // Wait for the socket to connect (the disconnected overlay, which blocks
-    // editing, must be gone) before drawing.
+    // Drawing stays blocked until the socket is connected.
     await expect(page.getByTestId("disconnected-overlay")).toHaveCount(0);
 
-    // Select the square tool and drag out a rectangle on the canvas.
+    // Draw one square through the real pointer controls.
     await page.getByRole("button", { name: "Square" }).click();
     const canvas = page.getByTestId("canvas");
     const box = await canvas.boundingBox();
@@ -57,12 +56,10 @@ test.describe("boards", () => {
     await page.mouse.move(box.x + 420, box.y + 340, { steps: 8 });
     await page.mouse.up();
 
-    // The square renders as a bordered box.
     const square = page.locator("div.border-2.border-black");
     await expect(square).toHaveCount(1);
 
-    // Let the socket write land, then reload and confirm the shape came back
-    // from the server (canvas-state) — proving the full save pipeline works.
+    // Reload after the socket write to prove the square was persisted.
     await page.waitForTimeout(1000);
     await page.reload();
 
@@ -75,7 +72,7 @@ test.describe("boards", () => {
     await createBoard(page);
     await expect(page.getByTestId("disconnected-overlay")).toHaveCount(0);
 
-    // SVG
+    // Check both download formats.
     await page.getByRole("button", { name: "Export" }).click();
     const [svg] = await Promise.all([
       page.waitForEvent("download"),
@@ -83,7 +80,6 @@ test.describe("boards", () => {
     ]);
     expect(svg.suggestedFilename()).toMatch(/\.svg$/);
 
-    // PNG
     await page.getByRole("button", { name: "Export" }).click();
     const [png] = await Promise.all([
       page.waitForEvent("download"),

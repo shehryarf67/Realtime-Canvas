@@ -4,14 +4,11 @@ import { useEffect, useState } from "react";
 import type { CanvasState, Shape, Note, TextBox } from "@/types/shape";
 import { getBoardState } from "@/lib/boards";
 
-// Matches the fixed logical canvas space in CanvasEditor (CANVAS_WIDTH/HEIGHT).
-// SVG scales the whole drawing down to whatever size the card gives it.
-// Nothing here is interactive — it's a picture of the data.
+// Thumbnails use the same fixed canvas size, then SVG scales it into the card.
 const VIEW_W = 1600;
 const VIEW_H = 900;
 
-// SVG rotate() takes degrees and a pivot point — matching the CSS
-// "rotate around centre" the live editor applies to these same items.
+// Use the same centre-pivot rotation as the editor.
 function rotateAround(rotation: number | undefined, cx: number, cy: number): string | undefined {
     return rotation ? `rotate(${rotation} ${cx} ${cy})` : undefined;
 }

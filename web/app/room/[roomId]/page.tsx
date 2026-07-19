@@ -33,8 +33,7 @@ export default function Room() {
   const [exportOpen, setExportOpen] = useState(false);
   const toolbarRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLDivElement | null>(null);
-  // Latest canvas state, kept in a ref (not state) so continuous editor
-  // updates don't re-render this page — read on demand at export time.
+  // Export reads the latest canvas from this ref without rerendering the page.
   const canvasStateRef = useRef<CanvasState>({ shapes: [], notes: [], texts: [] });
   const handleCanvasStateChange = useCallback((state: CanvasState) => {
     canvasStateRef.current = state;
@@ -166,7 +165,7 @@ export default function Room() {
           </button>
           {exportOpen && (
             <>
-              {/* Click-away backdrop */}
+              {/* Clicking outside closes the export menu. */}
               <div className="fixed inset-0 z-20" onClick={() => setExportOpen(false)} />
               <div
                 role="menu"
@@ -219,7 +218,7 @@ export default function Room() {
         canUndo={history?.canUndo ?? false} canRedo={history?.canRedo ?? false} />
     </div>
     <div ref={canvasRef}>
-      {/* key={roomId} remounts the editor on room change, so state never leaks between rooms */}
+      {/* Remount on room changes so canvas state cannot leak into another board. */}
       <CanvasEditor key={roomId} roomId={roomId} selectedTool={selectedTool} selectedColour={selectedColour} onHistoryChange={setHistory} onPresenceChange={setPresentUsers} onBoardDeleted={() => setRoomStatus("deleted")} onCanvasStateChange={handleCanvasStateChange} />
     </div>
   </main>;

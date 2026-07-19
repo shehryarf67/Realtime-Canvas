@@ -15,6 +15,7 @@ type ServerBoard = {
   lastEditedAt: number;
 };
 
+// Keep API field names out of the components that render board cards.
 function toBoard(serverBoard: ServerBoard): Board {
   return {
     id: serverBoard.roomId,

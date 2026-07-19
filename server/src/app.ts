@@ -6,13 +6,8 @@ import authRouter from "./routes/auth.js";
 import boardsRouter from "./routes/boards.js";
 import { logger } from "./lib/logger.js";
 
-// Defense-in-depth against CSRF. In production the auth cookie is
-// SameSite=None (frontend and API are on different domains), so it rides
-// cross-site requests. State-changing requests are already largely protected
-// because they require application/json (which forces a CORS preflight our
-// single-origin policy blocks), but this makes it explicit: any mutating
-// request that carries a browser Origin must match the configured client.
-// Requests with no Origin (server-to-server, curl, health checks) are allowed.
+// The production cookie is cross-site, so I check the Origin on every write.
+// Requests without an Origin are kept for scripts and health checks.
 const MUTATING_METHODS = new Set(["POST", "PATCH", "PUT", "DELETE"]);
 const enforceOrigin: RequestHandler = (req, res, next) => {
   if (!MUTATING_METHODS.has(req.method)) return next();
@@ -24,19 +19,14 @@ const enforceOrigin: RequestHandler = (req, res, next) => {
   next();
 };
 
-// Catches anything a route throws or rejects with (Express 5 forwards async
-// rejections here automatically). Logs the real error server-side but returns
-// a generic message so internals/stack traces never reach the client.
+// I log the real error here but never send stack traces or internals to clients.
 const errorHandler: ErrorRequestHandler = (err, _req, res, next) => {
   logger.error("Unhandled request error", { err });
-  // If the response already started streaming, we can't change the status —
-  // hand off to Express's default handler to close the connection.
+  // Express has to finish handling it if headers were already sent.
   if (res.headersSent) {
     return next(err);
   }
-  // Honor an explicit client-error status (e.g. a malformed-JSON body parse
-  // error is a 400); anything 5xx or unlabeled is reported generically so no
-  // stack trace or internal detail leaks to the client.
+  // Keep known 4xx errors useful. Everything else gets a safe generic message.
   const status = (err as { status?: number; statusCode?: number })?.status
     ?? (err as { statusCode?: number })?.statusCode;
   if (typeof status === "number" && status >= 400 && status < 500) {
@@ -46,20 +36,17 @@ const errorHandler: ErrorRequestHandler = (err, _req, res, next) => {
   res.status(500).json({ error: "Something went wrong" });
 };
 
-// The Express app on its own — no listen(), no Socket.IO, no DB connect.
-// index.ts composes those for the real server; tests mount this directly
-// with supertest against an in-memory MongoDB.
+// This only builds Express. index.ts adds HTTP, sockets and Mongo, while tests
+// can mount this function directly.
 export function buildApp(): express.Express {
   const app = express();
 
-  // Production runs behind the host's reverse proxy (Railway/Render/Fly).
-  // One hop means req.ip / req.secure reflect the real client (needed for
-  // rate limiting and Secure cookies) instead of the proxy itself.
+  // There is one hosting proxy in front of the API. This keeps client IPs and
+  // secure-cookie checks accurate.
   app.set("trust proxy", 1);
 
-  // Security headers (X-Content-Type-Options, X-Frame-Options, HSTS, etc.) and
-  // removes X-Powered-By. CORP is set to cross-origin because this API is
-  // intentionally consumed from the web app's separate origin.
+  // Helmet adds the standard security headers. CORP stays cross-origin because
+  // the web app and API are deployed on separate domains.
   app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
   app.disable("x-powered-by");
 
@@ -71,10 +58,9 @@ export function buildApp(): express.Express {
     res.setHeader("Access-Control-Allow-Credentials", "true");
     res.setHeader("Access-Control-Allow-Headers", "Content-Type");
     res.setHeader("Access-Control-Allow-Methods", "GET,POST,PATCH,DELETE,OPTIONS");
-    // Tell caches the response varies by requesting origin, so a CDN never
-    // serves one origin's CORS headers to another.
+    // This stops a cache from reusing CORS headers for another origin.
     res.setHeader("Vary", "Origin");
-    // Preflights don't need to reach the routers — answer them here.
+    // CORS preflights can finish before the request reaches a route.
     if (req.method === "OPTIONS") {
       res.sendStatus(204);
       return;
@@ -82,7 +68,7 @@ export function buildApp(): express.Express {
     next();
   });
 
-  // For the hosting platform's health probes and uptime monitoring.
+  // The host uses this to check whether the API is alive.
   app.get("/health", (_req, res) => {
     res.status(200).json({ ok: true });
   });
@@ -90,7 +76,7 @@ export function buildApp(): express.Express {
   app.use("/auth", authRouter);
   app.use("/boards", boardsRouter);
 
-  // Error handler must be registered last, after all routes.
+  // Express error handlers have to come after the routes they cover.
   app.use(errorHandler);
 
   return app;

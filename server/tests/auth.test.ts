@@ -2,10 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import request from "supertest";
 import { createTestApp, getAuthCookie, type TestContext } from "./helpers.js";
 
-// Counts against the limiters: signup allows 20/hour and login counts only
-// FAILED attempts (10/15min) — this file stays well under both, so no test
-// here ever trips a 429. Rate-limit behaviour itself is covered in
-// rate-limit.test.ts, which runs in its own isolated module graph.
+// This file stays below auth limits. rate-limit.test.ts checks the actual limits.
 
 let ctx: TestContext;
 
@@ -26,13 +23,13 @@ describe("POST /auth/signup", () => {
     expect(res.status).toBe(201);
     expect(res.body).toMatchObject({ name: USER.name, email: USER.email });
     expect(res.body.userId).toBeTruthy();
-    // Never leak the hash
+    // Password hashes must never leave the API.
     expect(res.body.passwordHash).toBeUndefined();
 
     const cookie = res.headers["set-cookie"]![0]!;
     expect(cookie).toMatch(/^token=/);
     expect(cookie).toMatch(/HttpOnly/i);
-    // Dev/test mode: Lax without Secure (prod flags covered in prod-cookies.test.ts)
+    // Local cookies use Lax without Secure; production has its own tests.
     expect(cookie).toMatch(/SameSite=Lax/i);
     expect(cookie).not.toMatch(/Secure/i);
   });
@@ -87,8 +84,7 @@ describe("POST /auth/login", () => {
       .post("/auth/login")
       .send({ email: { $ne: null }, password: { $ne: null } });
 
-    // Must be the generic 401 — never a 200 (injected-object auth bypass) and
-    // never a 500 (non-string password reaching bcrypt.compare).
+    // Operator objects should get the same safe 401 as bad credentials.
     expect(res.status).toBe(401);
     expect(res.headers["set-cookie"]).toBeUndefined();
   });
@@ -102,8 +98,7 @@ describe("POST /auth/login", () => {
       .send({ email: "ghost@example.com", password: "whatever-long" });
 
     expect(unknownEmail.status).toBe(401);
-    // Identical bodies, so the endpoint can't be used to probe which
-    // emails have accounts.
+    // Matching replies prevent account discovery.
     expect(unknownEmail.body).toEqual(wrongPassword.body);
   });
 });
@@ -143,7 +138,7 @@ describe("POST /auth/logout", () => {
     expect(res.status).toBe(200);
 
     const cookie = res.headers["set-cookie"]![0]!;
-    // An expired/emptied token cookie is how clearCookie manifests
+    // clearCookie sends an empty expired token.
     expect(cookie).toMatch(/^token=;/);
     expect(cookie).toMatch(/Expires=Thu, 01 Jan 1970/i);
   });
@@ -166,8 +161,7 @@ describe("global error handler", () => {
 
     expect(res.status).toBe(400);
     expect(res.body.error).toBeDefined();
-    // The default Express handler would dump a stack trace in the body; ours
-    // must not. Assert no "at fn (file:line:col)" stack frames leaked.
+    // Malformed JSON must not expose Express stack frames.
     expect(JSON.stringify(res.body)).not.toMatch(/\bat\s+.+:\d+:\d+/);
   });
 });

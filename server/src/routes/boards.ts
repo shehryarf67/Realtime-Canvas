@@ -5,15 +5,11 @@ import requireAuth from "../middleware/requireAuth.js";
 import { notifyBoardDeleted } from "../socket.js";
 import { isNonEmptyString } from "../lib/validation.js";
 
-// Board codes and names come straight from the client; bound their length so a
-// caller can't store an oversized value (the code is also a DB lookup key).
+// These limits keep client input and Mongo lookup keys at a sensible size.
 const MAX_ROOM_ID_LENGTH = 120;
 const MAX_NAME_LENGTH = 200;
 
-// Cap how many boards one account can create per hour so an authenticated user
-// can't script unlimited board creation. Keyed by userId (set by requireAuth,
-// which runs first), so it's per-account rather than per-IP — shared office
-// networks aren't collectively throttled.
+// Board creation is limited by account, not IP, so shared networks are fine.
 const createBoardLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   limit: 30,
@@ -25,12 +21,8 @@ const createBoardLimiter = rateLimit({
 
 const router = Router();
 
-// Object-level authorization the board routes previously lacked: requireAuth
-// only proves WHO you are, not that you may touch THIS board. Loads the board
-// and confirms the caller is a member; on failure it writes the right status
-// (401/404/403) and returns null, so callers do:
-//   const board = await requireMembership(roomId, req.userId, res);
-//   if (!board) return;
+// Login alone is not enough for board access. Every board read or edit goes
+// through this membership check.
 async function requireMembership(
   roomId: string,
   userId: Id | undefined,
@@ -42,8 +34,7 @@ async function requireMembership(
   }
   const board = await boards().findOne({ roomId });
   if (!board) {
-    // 404 (not 403) so a non-member can't distinguish "board exists but you're
-    // locked out" from "no such board" — no existence oracle.
+    // Use the same 404 for missing and private boards so ids cannot be probed.
     res.status(404).json({ error: "Board not found" });
     return null;
   }
@@ -54,16 +45,14 @@ async function requireMembership(
   return board;
 }
 
-// Create a new board
+// Create a board owned by the current user.
 router.post("/", requireAuth, createBoardLimiter, async (req, res) => {
   const { roomId, name } = req.body;
   const ownerId = req.userId;
   if (!ownerId) {
     return res.status(401).json({ error: "Unauthorized" });
   }
-  // Validate types before storing: these are attacker-controllable and roomId
-  // becomes a lookup key everywhere, so reject non-strings, empties, and
-  // oversized values rather than persisting them.
+  // Validate before roomId becomes a lookup key stored across the app.
   if (!isNonEmptyString(roomId) || roomId.length > MAX_ROOM_ID_LENGTH) {
     return res.status(400).json({ error: "Invalid board code" });
   }
@@ -82,8 +71,7 @@ router.post("/", requireAuth, createBoardLimiter, async (req, res) => {
     });
     res.status(201).json({ boardId: result.insertedId, roomId, name, ownerId });
   } catch (err) {
-    // Unique index on roomId: a duplicate means the code is already taken.
-    // Answer 409 instead of leaking a raw 500 from the driver.
+    // Mongo code 11000 means the generated room code already exists.
     if (err && typeof err === "object" && (err as { code?: number }).code === 11000) {
       return res.status(409).json({ error: "Board code already in use" });
     }
@@ -113,7 +101,7 @@ router.post("/:roomId/join", requireAuth, async (req, res) => {
   res.status(200).json(result);
 });
 
-// List the current user's boards, most recently edited first
+// List boards the current user can access, newest activity first.
 router.get("/", requireAuth, async (req, res) => {
   const ownerId = req.userId;
   if (!ownerId) {
@@ -128,7 +116,7 @@ router.get("/", requireAuth, async (req, res) => {
   res.status(200).json(userBoards);
 });
 
-// Fetch a single board by roomId — used to load the current name into a room
+// Load one board after checking membership.
 router.get("/:roomId", requireAuth, async (req, res) => {
   const { roomId } = req.params;
   if (typeof roomId !== "string") {
@@ -140,10 +128,8 @@ router.get("/:roomId", requireAuth, async (req, res) => {
   res.status(200).json(board);
 });
 
-// Rename a board (and bump lastEditedAt). Any member may rename — the name is
-// shared collaborative state, edited from inside the room. No upsert: boards
-// are only ever created through POST / (upserting here let any authenticated
-// user squat an arbitrary roomId as owner).
+// Any member can rename shared state. I avoid upsert here so this route cannot
+// be used to claim a new room id.
 router.patch("/:roomId", requireAuth, async (req, res) => {
   const { roomId } = req.params;
   const { name } = req.body;
@@ -166,9 +152,7 @@ router.patch("/:roomId", requireAuth, async (req, res) => {
   res.status(200).json(result);
 });
 
-// Delete a board and its canvas contents, so nothing is left orphaned.
-// Only the board's owner can do this — any other member can collaborate on
-// the canvas, but shouldn't be able to remove it entirely.
+// Only the owner can remove a board. Its canvas items are deleted with it.
 router.delete("/:roomId", requireAuth, async (req, res) => {
   const { roomId } = req.params;
   const userId = req.userId;
@@ -191,7 +175,7 @@ router.delete("/:roomId", requireAuth, async (req, res) => {
   res.status(200).json({ ok: true });
 });
 
-// Canvas contents of one room, grouped for thumbnail rendering
+// Group stored items into the shape expected by board thumbnails.
 router.get("/:roomId/items", requireAuth, async (req, res) => {
   const { roomId } = req.params;
   if (typeof roomId !== "string") {

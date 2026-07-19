@@ -2,10 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import request from "supertest";
 import { createTestApp, type TestContext } from "./helpers.js";
 
-// Boots the app as production (NODE_ENV set before the module graph loads),
-// because the cookie flags that matter for the real deployment — Secure +
-// SameSite=None for the cross-site Vercel->API setup — only switch on there.
-// Everything here would pass trivially (and meaninglessly) in dev mode.
+// Load the app in production mode so cross-site cookie flags are really tested.
 
 const ORIGIN = "https://coboard.example.com";
 
@@ -84,7 +81,7 @@ describe("CSRF origin enforcement", () => {
       .post("/auth/login")
       .set("Origin", ORIGIN)
       .send({ email: "a@b.com", password: "whatever-long" });
-    // Reaches the handler (401 for bad creds) rather than the origin gate.
+    // A matching origin should reach login instead of the origin guard.
     expect(res.status).not.toBe(403);
   });
 

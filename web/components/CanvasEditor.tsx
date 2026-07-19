@@ -42,16 +42,14 @@ function upsert<T extends { id: string | number }>(list: T[], item: T): T[] {
 
 type Bounds = { minX: number; minY: number; maxX: number; maxY: number };
 
-// Bounding box for any selectable item — used by the marquee-select
-// intersection test. Squares, circles, notes, and text boxes all share the
-// same x/y/width/height shape, so one fallback branch covers all three.
+// Put every item type into one bounding-box format for selection checks.
 function getBounds(item: Shape | Note | TextBox): Bounds {
-    if ("points" in item) { // For pen strokes
+    if ("points" in item) {
         const xs = item.points.map((p) => p.x);
         const ys = item.points.map((p) => p.y);
         return { minX: Math.min(...xs), minY: Math.min(...ys), maxX: Math.max(...xs), maxY: Math.max(...ys) };
     }
-    if ("x1" in item) { // For lines
+    if ("x1" in item) {
         return {
             minX: Math.min(item.x1, item.x2),
             minY: Math.min(item.y1, item.y2),
@@ -59,12 +57,12 @@ function getBounds(item: Shape | Note | TextBox): Bounds {
             maxY: Math.max(item.y1, item.y2),
         };
     }
-    if ("p1" in item) { // For triangles
+    if ("p1" in item) {
         const xs = [item.p1.x, item.p2.x, item.p3.x];
         const ys = [item.p1.y, item.p2.y, item.p3.y];
         return { minX: Math.min(...xs), minY: Math.min(...ys), maxX: Math.max(...xs), maxY: Math.max(...ys) };
     }
-    return { // Normal shapes (Squares, Circles, Notes)
+    return {
         minX: item.x,
         minY: item.y,
         maxX: item.x + item.width,
@@ -72,17 +70,15 @@ function getBounds(item: Shape | Note | TextBox): Bounds {
     };
 }
 
-// Returns a copy of any selectable item shifted by (dx, dy) — the shared
-// math used to move an entire multi-selection together, regardless of
-// which of these four geometry shapes it happens to be.
+// Shift any item type with the same delta so group dragging stays consistent.
 function shiftItemByDelta(item: Shape | Note | TextBox, dx: number, dy: number): Shape | Note | TextBox {
-    if ("points" in item) { // For pen strokes
+    if ("points" in item) {
         return { ...item, points: item.points.map((p) => ({ x: p.x + dx, y: p.y + dy })) };
     }
-    if ("x1" in item) { // For lines
+    if ("x1" in item) {
         return { ...item, x1: item.x1 + dx, y1: item.y1 + dy, x2: item.x2 + dx, y2: item.y2 + dy };
     }
-    if ("p1" in item) { // For triangles
+    if ("p1" in item) {
         return {
             ...item,
             p1: { x: item.p1.x + dx, y: item.p1.y + dy },
@@ -90,11 +86,10 @@ function shiftItemByDelta(item: Shape | Note | TextBox, dx: number, dy: number):
             p3: { x: item.p3.x + dx, y: item.p3.y + dy },
         };
     }
-    return { ...item, x: item.x + dx, y: item.y + dy }; // Normal shapes (Squares, Circles, Notes)
+    return { ...item, x: item.x + dx, y: item.y + dy };
 }
 
-// One entry in a group-drag snapshot — tagged with which state array it
-// belongs to, since shapes/notes/texts are stored (and set) separately.
+// Group drags remember which state list each selected item belongs to.
 type GroupDragEntry =
     | { kind: "shape"; original: Shape }
     | { kind: "note"; original: Note }
@@ -105,18 +100,15 @@ type GroupDragEntry =
 
 const ERASER_CURSOR = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='5' fill='white' stroke='black' stroke-width='2'/%3E%3C/svg%3E") 8 8, auto`;
 
-// Padding around a shape's bounding box for both the selection outline and
-// the invisible drag hit-area for shapes with no filled interior (lines, pen).
+// Extra space makes thin lines and pen strokes easier to select and drag.
 const SELECTION_PADDING = 6;
 
-// Every board lives in one fixed logical coordinate space, scaled to fit the
-// viewer's screen. Shapes are stored in these logical pixels, so all users see
-// the same layout regardless of window size.
+// All boards use one logical size, then scale to the screen. This keeps item
+// positions identical for every user.
 export const CANVAS_WIDTH = 1600;
 export const CANVAS_HEIGHT = 900;
 
-// Upper bound on undo/redo depth so a long session can't grow the history
-// stacks without limit. Oldest entries are dropped past this.
+// Keep undo history useful without letting it grow forever.
 const MAX_HISTORY = 100;
 
 const TEXT_COLOUR = "#000000";
@@ -157,17 +149,12 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
         pointerStart: { x: number; y: number };
         pointsStart: Point[];
     } | null>(null);
-    // Snapshot of every item in a multi-selection at the moment a group drag
-    // starts. dx/dy computed from pointerStart get applied to every entry's
-    // original geometry via shiftItemByDelta, regardless of which one you
-    // actually clicked to start the drag.
+    // Group drag always works from the starting geometry, avoiding drift.
     const groupDrag = useRef<{
         pointerStart: Point;
         items: GroupDragEntry[];
     } | null>(null);
-    // In-progress rotation of a single rectangle item. center is the pivot in
-    // logical canvas coords; original is the pre-rotation snapshot used to build
-    // the undo entry when the gesture ends.
+    // Rotation keeps its original item so pointer-up can create one undo entry.
     const rotateDrag = useRef<{
         kind: "shape" | "note" | "text";
         id: string | number;
@@ -175,16 +162,14 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
         original: Shape | Note | TextBox;
     } | null>(null);
     const shapesRef = useRef<Shape[]>([]);
-    const lastEmitTimeRef = useRef<number>(0); // Tells when the cursor was last emitted to the server. This is used to throttle the cursor move events.
-    const emitInterval = 30; // milliseconds
+    const lastEmitTimeRef = useRef<number>(0); // Used to throttle cursor updates.
+    const emitInterval = 30; // Milliseconds.
     const [notes, setNotes] = useState<Note[]>([]);
     const [texts, setTexts] = useState<TextBox[]>([]);
     const [isDraggingItem, setIsDraggingItem] = useState(false);
     const [selectedTriangleId, setSelectedTriangleId] = useState<string | null>(null);
     const [selectedIds, setSelectedIds] = useState<Set<string | number>>(new Set());
-    // The note/text currently in text-editing mode (entered via double-click).
-    // Everything else keeps its textarea non-interactive so a plain click
-    // selects the item (and a canvas drag can't select the text inside it).
+    // Only the active note or text box accepts typing. Other clicks select items.
     const [editingId, setEditingId] = useState<string | number | null>(null);
     const marqueeStart = useRef<Point | null>(null);
     const [marqueeRect, setMarqueeRect] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
@@ -208,23 +193,15 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
     function pushHistory(doMessage: CanvasMessage | CanvasMessage[], undoMessage: CanvasMessage | CanvasMessage[]) {
         setPast((prev) => {
             const next = [...prev, { do: doMessage, undo: undoMessage }];
-            // Cap the stack so a long editing session can't grow it without
-            // bound — drop the oldest entries past the limit. (future is
-            // naturally bounded by past, so it needs no separate cap.)
+            // Drop the oldest action when history reaches the limit.
             return next.length > MAX_HISTORY ? next.slice(next.length - MAX_HISTORY) : next;
         });
-        setFuture([]); // Clear future on new action which invalidates redo history
+        setFuture([]); // A new edit invalidates redo history.
     }
 
-    // Derived from the actual current data, not a local counter — a local
-    // counter would desync across clients, since each browser's own counter
-    // starts independently and two users creating shapes around the same
-    // time would produce colliding values that mean different things on
-    // each screen.
+    // Derive stacking from current shared data instead of a per-browser counter.
     function getNextZIndex(): number {
-        // ?? 0 guards against shapes persisted before zIndex existed (their
-        // stored data has no zIndex, so it comes back undefined) — without
-        // it, Math.max returns NaN and poisons every new shape's zIndex.
+        // Older saved items have no zIndex, so they start at zero.
         const allZ = [
             ...shapes.map((s) => s.zIndex ?? 0),
             ...notes.map((n) => n.zIndex ?? 0),
@@ -243,15 +220,13 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
     function pasteClipboard() {
         if (!clipboard.current) return;
         const { shapes: clippedShapes, notes: clippedNotes, texts: clippedTexts } = clipboard.current;
-        const PASTE_OFFSET = 20; // Nudge pasted copies so they don't land exactly on the originals
+        const PASTE_OFFSET = 20; // Keep pasted items visible beside the originals.
 
         const doMessages: CanvasMessage[] = [];
         const undoMessages: CanvasMessage[] = [];
         const newSelectedIds = new Set<string | number>();
 
-        // A single base value, incremented locally per item — calling
-        // getNextZIndex() again per item would return the same value every
-        // time, since state hasn't re-rendered between these calls.
+        // State will not rerender inside this loop, so increment one base value.
         const zIndexBase = getNextZIndex();
         let zIndexCounter = 0;
 
@@ -262,7 +237,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
         }));
         const newNotes: Note[] = clippedNotes.map((n, i) => ({
             ...(shiftItemByDelta(n, PASTE_OFFSET, PASTE_OFFSET) as Note),
-            id: Date.now() + i, // +i avoids id collisions when pasting several notes at once
+            id: Date.now() + i, // Keep ids unique inside a multi-item paste.
             zIndex: zIndexBase + zIndexCounter++,
         }));
         const newTexts: TextBox[] = clippedTexts.map((t) => ({
@@ -340,8 +315,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
         setSelectedIds(new Set());
     }
 
-    // Every shape/note/text combined, sorted by current zIndex — the shared
-    // view the four z-order actions below all work from.
+    // Z-order controls all item types together, not three separate stacks.
     function getAllItemsSorted(): { kind: "shape" | "note" | "text"; id: string | number; zIndex: number }[] {
         return [
             ...shapes.map((s) => ({ kind: "shape" as const, id: s.id, zIndex: s.zIndex ?? 0 })),
@@ -350,9 +324,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
         ].sort((a, b) => a.zIndex - b.zIndex);
     }
 
-    // Shared by all four z-order actions: looks up each item's current full
-    // data, applies the new zIndex, updates state, and batches everything
-    // into one broadcast/undo entry — same pattern as paste/delete.
+    // Apply a stacking change as one state update, broadcast and undo action.
     function applyZIndexUpdates(updates: { kind: "shape" | "note" | "text"; id: string | number; newZIndex: number }[]) {
         if (updates.length === 0) return;
 
@@ -409,10 +381,8 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
         );
     }
 
-    // Swaps each selected item with its nearest non-selected neighbor one
-    // step above/below. Correct for a single selected item or a scattered
-    // multi-selection; two adjacent selected items sharing the same nearest
-    // neighbor is a known edge case not handled here.
+    // Move selected items one step past the closest unselected item.
+    // Adjacent selected items sharing one neighbor are still an edge case.
     function bringSelectionForward() {
         if (selectedIds.size === 0) return;
         const all = getAllItemsSorted();
@@ -474,8 +444,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
     const undo = useCallback(() => {
         if (past.length === 0) return;
         const lastAction = past[past.length - 1];
-        // Check if the items selected are single or multiple, and apply the undo messages accordingly
-        // Same for Redo
+        // Group actions store arrays; single actions store one message.
         const messages = Array.isArray(lastAction.undo) ? lastAction.undo : [lastAction.undo];
         messages.forEach((m) => {
             applyMessage(m);
@@ -508,7 +477,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
 
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
-            if (document.activeElement?.tagName === "TEXTAREA") return; // Don't trigger undo/redo when typing in a textarea
+            if (document.activeElement?.tagName === "TEXTAREA") return; // Leave text editing shortcuts alone.
             if (e.ctrlKey && e.key === "z") {
                 e.preventDefault();
                 undo();
@@ -550,9 +519,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
         shapesRef.current = shapes;
     }, [shapes]);
 
-    // Focus the textarea that just entered edit mode. Centralised here (rather
-    // than in each double-click handler) so it also fires for freshly created
-    // notes/texts, whose textarea only exists after the next render.
+    // The textarea only exists after render, so focus it from this effect.
     useEffect(() => {
         if (editingId == null) return;
         const el = canvasRef.current?.querySelector(
@@ -561,12 +528,8 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
         el?.focus();
     }, [editingId]);
 
-    // A pointer drag on the canvas (drawing a pen stroke, marquee-selecting)
-    // makes the browser start a *document* text selection anchored on the
-    // canvas, which then sweeps across the text inside notes/text boxes as you
-    // move — the flicker. user-select:none doesn't stop this for form controls,
-    // so we cancel the gesture at its source: selectstart. We still allow it
-    // when a textarea is genuinely being edited (its own text selection).
+    // Canvas drags can trigger browser text selection inside textareas. Block
+    // that selection unless the user is actually editing text.
     useEffect(() => {
         const el = canvasRef.current;
         if (!el) return;
@@ -578,7 +541,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
         return () => el.removeEventListener("selectstart", onSelectStart);
     }, []);
 
-    // Keep the canvas scaled to whatever width its container currently has.
+    // ResizeObserver keeps logical canvas scaling in sync with its container.
     useEffect(() => {
         const wrapper = wrapperRef.current;
         if (!wrapper) return;
@@ -593,7 +556,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
     }, []);
 
 
-    // Joining room effect. Checking if socket connected or not. 
+    // Join again after reconnects and replace local state with the server copy.
     useEffect(() => {
         if (!socket) return;
 
@@ -623,8 +586,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
     useEffect(() => {
         if (!socket) return;
 
-        // We used the reduce function to handle the edge case where the user enters 
-        // the room the split second a change is made, so that all changes are visible
+        // Merge incoming state by id so a join-time update is not lost.
         const handleState = (state: CanvasState) => {
             setShapes((prev) => state.shapes.reduce((acc, shape) => upsert(acc, shape), prev));
             setNotes((prev) => state.notes.reduce((acc, note) => upsert(acc, note), prev));
@@ -697,8 +659,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
         );
     }, [presentUsers, onPresenceChange]);
 
-    // Surface the live canvas state to the parent (for board export). Fires on
-    // every edit, but the parent just stashes it in a ref — no re-render.
+    // The parent stores this in a ref for export, so these updates stay cheap.
     useEffect(() => {
         onCanvasStateChange?.({ shapes, notes, texts });
     }, [shapes, notes, texts, onCanvasStateChange]);
@@ -725,7 +686,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
         const rect = canvasRef.current?.getBoundingClientRect();
         if (!rect) return { x: 0, y: 0 };
 
-        // rect is post-transform, so divide by scale to get logical coordinates
+        // DOM coordinates are scaled, so convert them back to logical pixels.
         const rawX = (clientX - rect.left) / scale;
         const rawY = (clientY - rect.top) / scale;
 
@@ -777,8 +738,8 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
         }
         else {
             setSelectedTriangleId(null);
-            setEditingId(null); // Leave text-edit mode when clicking the canvas
-            (document.activeElement as HTMLElement)?.blur(); // Remove focus from any active textarea when clicking on the canvas
+            setEditingId(null); // Clicking the canvas exits text editing.
+            (document.activeElement as HTMLElement)?.blur();
         }
         if (selectedTool === "select") {
             const { x, y } = getCanvasPoint(e.clientX, e.clientY);
@@ -802,10 +763,9 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
                 zIndex: getNextZIndex(),
             };
             setTexts((prev) => [...prev, newText]);
-            // We use the new array due to React's immutability
             broadcast({ kind: "text", action: "add", payload: newText });
             pushHistory({ kind: "text", action: "add", payload: newText }, { kind: "text", action: "delete", id: newText.id });
-            setEditingId(newText.id); // Drop straight into editing the new text
+            setEditingId(newText.id); // Start typing into a new text box.
 
             return;
         }
@@ -824,7 +784,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
             setNotes((prev) => [...prev, newNote]);
             broadcast({ kind: "note", action: "add", payload: newNote });
             pushHistory({ kind: "note", action: "add", payload: newNote }, { kind: "note", action: "delete", id: newNote.id });
-            setEditingId(newNote.id); // Drop straight into editing the new note
+            setEditingId(newNote.id); // Start typing into a new note.
             return;
         }
         if (selectedTool === "pen") {
@@ -859,9 +819,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
         if (rotateDrag.current) {
             const current = getCanvasPoint(e.clientX, e.clientY);
             const { kind, id, center } = rotateDrag.current;
-            // atan2 gives the angle from centre to pointer measured from the +x
-            // axis; +90 rotates the frame so 0° means "handle pointing straight
-            // up". Shift snaps to 15° increments.
+            // Offset atan2 so zero points upward. Shift snaps to 15 degree steps.
             const raw = (Math.atan2(current.y - center.y, current.x - center.x) * 180) / Math.PI + 90;
             const angle = e.shiftKey ? Math.round(raw / 15) * 15 : raw;
 
@@ -1134,7 +1092,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
             return;
         }
 
-        // TODO: broadcast the finished shape (add or update)
+        // Broadcast the finished draw or move once the pointer is released.
         const wasDrawing = drawingId.current !== null;
         const moveId =
             drawingId.current ??
@@ -1184,11 +1142,8 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
         setIsDrawing(false);
     }
 
-    // Plain click replaces the selection with just this id — unless it's
-    // already part of the current multi-selection, in which case we leave
-    // the selection untouched, so a plain click-and-drag on one of several
-    // already-selected shapes moves the whole group (standard convention).
-    // Ctrl/Shift+click always toggles this id in/out of the selection.
+    // Plain click selects one item. Clicking inside a group keeps the group for
+    // dragging, while Ctrl/Shift toggles individual items.
     function handleShapeSelect(e: { ctrlKey: boolean; shiftKey: boolean }, id: string | number) {
         if (e.ctrlKey || e.shiftKey) {
             setSelectedIds((prev) => {
@@ -1202,18 +1157,12 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
         }
     }
 
-    // Used to disable react-rnd's own built-in dragging for a shape that's
-    // part of a multi-selection, so the canvas-level groupDrag mechanism
-    // (shared with lines/triangles/pen) handles its movement instead —
-    // otherwise Rnd's internal drag and our own would fight over position.
+    // Group dragging must own movement instead of fighting react-rnd dragging.
     function isGroupDragEligible(id: string | number): boolean {
         return selectedTool === "select" && selectedIds.size > 1 && selectedIds.has(id);
     }
 
-    // If this id is part of a multi-selection, snapshot every selected
-    // item's current geometry and start a group drag; returns true so the
-    // caller can skip setting up its own individual drag ref. Returns false
-    // (and does nothing) for a lone selection or no selection at all.
+    // Start a group snapshot when this item belongs to a multi-selection.
     function startGroupDrag(e: { clientX: number; clientY: number }, id: string | number): boolean {
         if (!(selectedIds.size > 1 && selectedIds.has(id))) return false;
 
@@ -1232,8 +1181,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
         return true;
     }
 
-    // Widened to SVGElement (not SVGLineElement) since this is also called
-    // from the invisible drag hit-area rect, not just the visible line itself.
+    // SVGElement covers both the visible line and its invisible hit area.
     function handleLinePointerDown(e: React.PointerEvent<SVGElement>, shape: LineShape) {
         e.stopPropagation();
         if (selectedTool === "eraser") {
@@ -1257,10 +1205,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
         };
     }
 
-    // Widened to SVGElement (not SVGPolygonElement) since this is also
-    // called from the invisible drag hit-area rect, not just the filled
-    // triangle itself — the rect covers the bounding-box corners outside
-    // the triangle's own fill.
+    // SVGElement covers both the triangle and its larger drag hit area.
     function handleTrianglePointerDown(e: React.PointerEvent<SVGElement>, shape: TriangleShape) {
         e.stopPropagation();
         if (selectedTool === "eraser") {
@@ -1284,8 +1229,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
         setSelectedTriangleId(shape.id);
     }
 
-    // Widened to SVGElement (not SVGPathElement) since this is also called
-    // from the invisible drag hit-area rect, not just the visible stroke.
+    // SVGElement covers both the pen stroke and its invisible hit area.
     function handlePenPointerDown(e: React.PointerEvent<SVGElement>, shape: PenShape) {
         e.stopPropagation();
         if (selectedTool === "eraser") {
@@ -1317,10 +1261,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
         };
     }
 
-    // Bounding-box centre (the rotation pivot) and half-height (how far above
-    // the centre the handle stem starts) for any rotatable item. Derived from
-    // getBounds so it works uniformly for box shapes, triangles, pen strokes,
-    // notes, and texts — whatever their underlying geometry.
+    // Use bounds so every item type gets the same rotation pivot and handle.
     function rotatableGeometry(item: Shape | Note | TextBox): { center: Point; halfHeight: number } {
         const b = getBounds(item);
         return {
@@ -1329,10 +1270,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
         };
     }
 
-    // The lone selected item that can be rotated, or null. Everything is
-    // rotatable except lines (a line's angle is already fully expressed by its
-    // two endpoints, so a rotate handle would be redundant), and only one item
-    // at a time — multi-item rotation is a separate problem.
+    // Rotation is single-item only. Lines already express angle with endpoints.
     type Rotatable = {
         kind: "shape" | "note" | "text";
         id: string | number;
@@ -1356,10 +1294,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
         return null;
     }
 
-    // Starts a rotate gesture from the handle. Snapshots the pivot (centre) and
-    // the item's current geometry so the canvas-level pointer-move can set a
-    // live angle and pointer-up can record the undo pair — same shape as the
-    // triangle-vertex drag, which also drives off the canvas move/up handlers.
+    // Save the pivot and original item so rotation can update live and undo once.
     function handleRotateHandlePointerDown(
         e: React.PointerEvent<HTMLDivElement>,
         kind: "shape" | "note" | "text",
@@ -1384,9 +1319,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
         }
     }
 
-    // Dashed selection outline for shapes with no Rnd wrapper box to put a
-    // ring on (lines/triangles/pen) — box shapes/notes/texts get a ring via
-    // their own wrapper div's className instead.
+    // SVG-only shapes need their own selection outline outside react-rnd.
     function renderSelectionOutline(id: string | number, bounds: Bounds) {
         if (!selectedIds.has(id)) return null;
         return (
@@ -1405,9 +1338,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
         );
     }
 
-    // Invisible hit-area matching the same padded box the selection outline
-    // draws — lines/pen have fill="none", so without this, only the thin
-    // visible stroke itself is draggable, not the space around it.
+    // Thin unfilled shapes get a larger invisible target for dragging.
     function renderDragHitArea(bounds: Bounds, onPointerDown: (e: React.PointerEvent<SVGRectElement>) => void) {
         return (
             <rect
@@ -1428,9 +1359,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
         const bounds = getBounds(shape);
         const cx = (bounds.minX + bounds.maxX) / 2;
         const cy = (bounds.minY + bounds.maxY) / 2;
-        // Rotate the whole group (fill, hit-area, outline, vertices) around the
-        // bbox centre. The points are untouched — this is purely visual, so
-        // bounds/marquee/vertex math stays correct.
+        // Rotate visually around the bounds centre without changing stored points.
         const rotation = shape.rotation ?? 0;
         const transform = rotation ? `rotate(${rotation} ${cx} ${cy})` : undefined;
 
@@ -1449,8 +1378,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
                         onPointerDown={(e) => handleTrianglePointerDown(e, shape)}
                     />
                     {renderSelectionOutline(shape.id, bounds)}
-                    {/* Vertex editing is disabled while rotated — dragging a vertex
-                        moves it in unrotated space, which reads as a jump on screen. */}
+                    {/* Rotated triangles hide vertex handles because their points stay unrotated. */}
                     {selectedTriangleId === shape.id && !shape.rotation && (
                         <>
                             <circle
@@ -1528,8 +1456,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
                         deleteNote(note.id);
                         return;
                     }
-                    // While editing, stop the event reaching Rnd so click-dragging
-                    // to select text doesn't move the note.
+                    // Selecting text should not drag the note.
                     if (editing) e.stopPropagation();
                 }}
                 onBlur={() => setEditingId((cur) => (cur === note.id ? null : cur))}
@@ -1547,9 +1474,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
                 className={`h-full w-full resize-none p-2 text-sm outline-none ${editing ? "" : "select-none"}`}
                 style={{
                     backgroundColor: note.color,
-                    // Non-interactive until editing: clicks fall through to the
-                    // Rnd wrapper (select + drag) and canvas drags can't select
-                    // the text inside.
+                    // Outside edit mode, clicks belong to the draggable wrapper.
                     pointerEvents: editing ? "auto" : "none",
                     cursor: editing ? "text" : "move",
                 }}
@@ -1605,10 +1530,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
         return (
             <svg key={shape.id} className="pointer-events-none absolute inset-0 h-full w-full overflow-visible">
                 <g transform={transform}>
-                    {/* Hit-area follows the stroke, not the bounding box — a fat
-                        transparent polyline. Filling the whole bbox (as a rect
-                        would) covers text/other items sitting inside the pen's
-                        span and steals their clicks. */}
+                    {/* Follow the stroke so empty parts of its bounds do not steal clicks. */}
                     <polyline
                         points={shape.points.map((p) => `${p.x},${p.y}`).join(" ")}
                         fill="none"
@@ -1647,7 +1569,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
             return renderPenShape(shape);
         }
 
-        // Only render draggable/resizable boxes for shapes that have width/height
+        // Only box shapes use react-rnd for drag and resize.
         if (!("width" in shape && "height" in shape)) {
             return null;
         }
@@ -1672,9 +1594,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
                     }
                 }}
                 onDrag={(e, data) => {
-                    // Live position write so the rotate handle (rendered from
-                    // state, outside Rnd) tracks the shape during the drag
-                    // instead of jumping to the new spot only on release.
+                    // Update state during drag so the separate rotate handle follows.
                     setShapes((prev) =>
                         prev.map((s) => (s.id === shape.id ? { ...s, x: data.x, y: data.y } : s))
                     );
@@ -1831,10 +1751,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
         );
     }
 
-    // One combined, z-sorted list spanning all three kinds — this is what
-    // actually fixes cross-kind stacking (previously notes always painted
-    // over shapes and texts always painted over both, regardless of
-    // z-index, since they were three separate sibling blocks in render order).
+    // Render one sorted list so z-index works across shapes, notes and text.
     type RenderEntry =
         | { kind: "shape"; item: Shape }
         | { kind: "note"; item: Note }
@@ -1852,10 +1769,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
             className="relative mt-4 w-full overflow-hidden border"
             style={{ aspectRatio: `${CANVAS_WIDTH} / ${CANVAS_HEIGHT}` }}
         >
-            {/* While the socket is down, cover the canvas to block edits — they
-                wouldn't reach the server and would be lost on the reconnect
-                re-sync. The overlay captures pointer events, so nothing new can
-                be drawn until the connection is back. */}
+            {/* Block edits while offline because reconnect replaces local state. */}
             {!isConnected && (
                 <div
                     data-testid="disconnected-overlay"
@@ -1898,8 +1812,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
                     const { kind, id, center, halfHeight, rotation, original } = rotatable;
                     const cx = center.x;
                     const cy = center.y;
-                    // -90 puts the handle straight up at rotation 0; it then swings
-                    // around the centre as rotation changes, staying "above" the shape.
+                    // Start the handle above the shape, then rotate it around the centre.
                     const rad = ((rotation - 90) * Math.PI) / 180;
                     const edgeDist = halfHeight;
                     const handleDist = edgeDist + 28;

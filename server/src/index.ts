@@ -20,10 +20,8 @@ connectToDatabase()
     process.exit(1);
   });
 
-// Hosts send SIGTERM on redeploy/restart. Stop accepting new connections,
-// let Mongo flush, then exit — otherwise in-flight canvas writes can be cut
-// off mid-operation. The timeout guards against a hung close keeping the old
-// instance alive past the platform's kill window.
+// I close HTTP and Mongo cleanly on deploys so active canvas writes can finish.
+// The timeout is the fallback if shutdown gets stuck.
 process.on("SIGTERM", () => {
   logger.info("SIGTERM received, shutting down");
   httpServer.close(async () => {

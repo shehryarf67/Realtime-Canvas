@@ -91,14 +91,13 @@ export default function Boards() {
 
   return (
     <main className="relative min-h-screen w-full bg-[#f4f6fb] text-neutral-900">
-      {/* Same dot-grid backdrop as the landing page, so the two feel continuous */}
+      {/* Reuse the landing page background. */}
       <div
         aria-hidden="true"
         className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle,_#94a3b8_1.3px,_transparent_1.4px)] bg-[length:24px_24px] opacity-50"
       />
 
       <div className="relative z-10 mx-auto w-full max-w-6xl px-6 py-10 sm:px-10">
-        {/* Top bar: back home + brand, create action on the right */}
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-6">
             <Link
@@ -132,7 +131,6 @@ export default function Boards() {
           </button>
         </div>
 
-        {/* Heading */}
         <p className="mt-12 font-mono text-xs font-normal tracking-tight text-neutral-500">
           Your boards
         </p>
@@ -145,7 +143,6 @@ export default function Boards() {
           </p>
         )}
 
-        {/* Gallery */}
         {loading ? (
           <div className="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {[0, 1, 2].map((i) => (
@@ -226,7 +223,7 @@ export default function Boards() {
         )}
       </div>
 
-      {/* Delete confirmation */}
+      {/* Board contents cannot be recovered, so deletion needs confirmation. */}
       {pendingDelete && (
         <div
           className="fixed inset-0 z-20 grid place-items-center bg-neutral-900/40 px-6"

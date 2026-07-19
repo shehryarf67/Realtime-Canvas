@@ -1,9 +1,6 @@
 import { describe, it, expect, beforeAll } from "vitest";
 
-// Unit test for the shape-message validator. socket.ts pulls in config.ts
-// (which validates env at import) and db.ts (which constructs a MongoClient),
-// so set dummy env before importing. No real DB connection happens — we only
-// call the pure validator, never connectToDatabase().
+// socket.ts reads config during import, so dummy env must exist before loading it.
 let isValidCanvasMessage: (message: unknown) => boolean;
 
 beforeAll(async () => {
