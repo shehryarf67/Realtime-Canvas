@@ -1,13 +1,15 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
+import { Download } from "lucide-react";
 import Toolbar from "@/components/Toolbar";
 import CanvasEditor, { getCursorColour, type PresentUser } from "@/components/CanvasEditor";
 import { renameBoard, joinBoard } from "@/lib/boards";
+import { downloadBoardPng, downloadBoardSvg } from "@/lib/exportBoard";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { useSocket } from "@/contexts/SocketContext";
-import type { Tool } from "@/types/shape";
+import type { Tool, CanvasState } from "@/types/shape";
 
 type HistoryControls = {
   undo: () => void;
@@ -28,8 +30,15 @@ export default function Room() {
   const [history, setHistory] = useState<HistoryControls | null>(null);
   const [presentUsers, setPresentUsers] = useState<PresentUser[]>([]);
   const [boardName, setBoardName] = useState("Untitled Board");
+  const [exportOpen, setExportOpen] = useState(false);
   const toolbarRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLDivElement | null>(null);
+  // Latest canvas state, kept in a ref (not state) so continuous editor
+  // updates don't re-render this page — read on demand at export time.
+  const canvasStateRef = useRef<CanvasState>({ shapes: [], notes: [], texts: [] });
+  const handleCanvasStateChange = useCallback((state: CanvasState) => {
+    canvasStateRef.current = state;
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -74,6 +83,12 @@ export default function Room() {
     navigator.clipboard.writeText(roomId);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  }
+
+  function handleExport(format: "png" | "svg") {
+    setExportOpen(false);
+    if (format === "svg") downloadBoardSvg(canvasStateRef.current, boardName);
+    else downloadBoardPng(canvasStateRef.current, boardName);
   }
 
   if (!isAuthed || roomStatus === "loading") return null;
@@ -139,6 +154,43 @@ export default function Room() {
           </div>
         )}
 
+        <div className="relative">
+          <button
+            onClick={() => setExportOpen((o) => !o)}
+            aria-haspopup="menu"
+            aria-expanded={exportOpen}
+            className="flex items-center gap-1.5 text-sm font-medium text-neutral-600 hover:text-neutral-900 transition-colors cursor-pointer motion-reduce:transition-none"
+          >
+            <Download size={16} />
+            Export
+          </button>
+          {exportOpen && (
+            <>
+              {/* Click-away backdrop */}
+              <div className="fixed inset-0 z-20" onClick={() => setExportOpen(false)} />
+              <div
+                role="menu"
+                className="absolute right-0 z-30 mt-2 w-40 overflow-hidden rounded-md border border-neutral-200 bg-white shadow-lg"
+              >
+                <button
+                  role="menuitem"
+                  onClick={() => handleExport("png")}
+                  className="block w-full px-3 py-2 text-left text-sm text-neutral-700 hover:bg-neutral-50"
+                >
+                  Download PNG
+                </button>
+                <button
+                  role="menuitem"
+                  onClick={() => handleExport("svg")}
+                  className="block w-full px-3 py-2 text-left text-sm text-neutral-700 hover:bg-neutral-50"
+                >
+                  Download SVG
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+
         <button
           onClick={handleCopyCode}
           className="flex items-center gap-2 text-sm font-mono text-neutral-600 hover:text-neutral-900 transition-colors cursor-pointer motion-reduce:transition-none"
@@ -168,7 +220,7 @@ export default function Room() {
     </div>
     <div ref={canvasRef}>
       {/* key={roomId} remounts the editor on room change, so state never leaks between rooms */}
-      <CanvasEditor key={roomId} roomId={roomId} selectedTool={selectedTool} selectedColour={selectedColour} onHistoryChange={setHistory} onPresenceChange={setPresentUsers} onBoardDeleted={() => setRoomStatus("deleted")} />
+      <CanvasEditor key={roomId} roomId={roomId} selectedTool={selectedTool} selectedColour={selectedColour} onHistoryChange={setHistory} onPresenceChange={setPresentUsers} onBoardDeleted={() => setRoomStatus("deleted")} onCanvasStateChange={handleCanvasStateChange} />
     </div>
   </main>;
 }

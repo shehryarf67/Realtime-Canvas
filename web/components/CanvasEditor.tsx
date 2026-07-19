@@ -26,6 +26,7 @@ type CanvasEditorProps = {
     onHistoryChange?: (history: HistoryControls) => void;
     onPresenceChange?: (users: PresentUser[]) => void;
     onBoardDeleted?: () => void;
+    onCanvasStateChange?: (state: CanvasState) => void;
 };
 
 type HistoryEntry = {
@@ -128,7 +129,7 @@ export function getCursorColour(userId: string): string {
     return CURSOR_COLOURS[sum % CURSOR_COLOURS.length];
 }
 
-export default function CanvasEditor({ roomId, selectedTool, selectedColour, onHistoryChange, onPresenceChange, onBoardDeleted }: CanvasEditorProps) {
+export default function CanvasEditor({ roomId, selectedTool, selectedColour, onHistoryChange, onPresenceChange, onBoardDeleted, onCanvasStateChange }: CanvasEditorProps) {
     const [shapes, setShapes] = useState<Shape[]>([]);
     const [isDrawing, setIsDrawing] = useState(false);
     const canvasRef = useRef<HTMLDivElement | null>(null);
@@ -695,6 +696,12 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
             Array.from(presentUsers.entries()).map(([userId, name]) => ({ userId, name }))
         );
     }, [presentUsers, onPresenceChange]);
+
+    // Surface the live canvas state to the parent (for board export). Fires on
+    // every edit, but the parent just stashes it in a ref — no re-render.
+    useEffect(() => {
+        onCanvasStateChange?.({ shapes, notes, texts });
+    }, [shapes, notes, texts, onCanvasStateChange]);
 
     useEffect(() => {
         if (!socket) return;

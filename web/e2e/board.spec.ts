@@ -69,4 +69,26 @@ test.describe("boards", () => {
     await expect(page.getByPlaceholder("Untitled Board")).toBeVisible();
     await expect(page.locator("div.border-2.border-black")).toHaveCount(1);
   });
+
+  test("exports the board as SVG and PNG", async ({ page }) => {
+    await signUp(page);
+    await createBoard(page);
+    await expect(page.getByTestId("disconnected-overlay")).toHaveCount(0);
+
+    // SVG
+    await page.getByRole("button", { name: "Export" }).click();
+    const [svg] = await Promise.all([
+      page.waitForEvent("download"),
+      page.getByRole("menuitem", { name: "Download SVG" }).click(),
+    ]);
+    expect(svg.suggestedFilename()).toMatch(/\.svg$/);
+
+    // PNG
+    await page.getByRole("button", { name: "Export" }).click();
+    const [png] = await Promise.all([
+      page.waitForEvent("download"),
+      page.getByRole("menuitem", { name: "Download PNG" }).click(),
+    ]);
+    expect(png.suggestedFilename()).toMatch(/\.png$/);
+  });
 });
