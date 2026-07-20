@@ -1,39 +1,31 @@
-import nodemailer, { type Transporter } from "nodemailer";
 import { logger } from "./logger.js";
 
-// Sends over real SMTP when it's configured. When it isn't (or a send fails),
-// it logs the reset link instead of throwing — so the password-reset request
-// can never hang or 500, and the flow stays testable in local dev.
-const MAIL_FROM = process.env.MAIL_FROM || '"coboard" <no-reply@coboard.local>';
+// Sends password-reset email via Brevo's HTTP API (over HTTPS/443) rather than
+// SMTP. Hosts like Render block outbound SMTP ports (25/465/587), which makes
+// SMTP unreliable in production; an HTTPS API is not port-blocked.
+//
+// Set BREVO_API_KEY to enable real delivery. Without it (or on any failure) the
+// reset link is logged instead of thrown, so the request never hangs or 500s
+// and the flow stays testable in local dev (the link is also surfaced on the
+// page in non-production).
+const BREVO_ENDPOINT = "https://api.brevo.com/v3/smtp/email";
+const RAW_MAIL_FROM = process.env.MAIL_FROM || "coboard <no-reply@coboard.local>";
+const SEND_TIMEOUT_MS = 15_000;
 
-function smtpConfigured(): boolean {
-  return Boolean(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS);
-}
-
-let transporter: Transporter | null = null;
-function getTransporter(): Transporter {
-  if (!transporter) {
-    const port = Number(process.env.SMTP_PORT) || 587;
-    transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port,
-      secure: port === 465,
-      auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
-      // Without these, an unreachable/misconfigured SMTP host makes sendMail
-      // hang indefinitely, which freezes the whole request. Fail in seconds.
-      connectionTimeout: 10_000,
-      greetingTimeout: 10_000,
-      socketTimeout: 15_000,
-    });
+// Parse `Name <email@host>` (or a bare address) into Brevo's sender shape.
+function parseSender(raw: string): { name: string; email: string } {
+  const match = raw.match(/^\s*(.*?)\s*<([^>]+)>\s*$/);
+  if (match && match[2]) {
+    return { name: match[1]?.trim() || "coboard", email: match[2].trim() };
   }
-  return transporter;
+  return { name: "coboard", email: raw.trim() };
 }
 
 function renderEmail(resetUrl: string) {
   return {
     subject: "Reset your coboard password",
-    text: `You requested a password reset for your coboard account.\n\nOpen this link to choose a new password (valid for 1 hour):\n${resetUrl}\n\nIf you didn't request this, you can safely ignore this email.`,
-    html: `
+    textContent: `You requested a password reset for your coboard account.\n\nOpen this link to choose a new password (valid for 1 hour):\n${resetUrl}\n\nIf you didn't request this, you can safely ignore this email.`,
+    htmlContent: `
       <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto; color: #171717;">
         <h2 style="font-weight: 500;">Reset your password</h2>
         <p style="color: #525252; line-height: 1.6;">
@@ -56,21 +48,43 @@ function renderEmail(resetUrl: string) {
   };
 }
 
-// Returns true when the email was handed to an SMTP server, false when it fell
-// back to logging (no SMTP configured, or the send failed). Never throws, so
-// callers can't hang or leak send-failures to the client.
+// Returns true if the email was accepted by the provider, false when it fell
+// back to logging (no API key, or the send failed). Never throws.
 export async function sendPasswordResetEmail(to: string, resetUrl: string): Promise<boolean> {
-  if (smtpConfigured()) {
+  const apiKey = process.env.BREVO_API_KEY;
+
+  if (apiKey) {
     try {
-      await getTransporter().sendMail({ from: MAIL_FROM, to, ...renderEmail(resetUrl) });
-      return true;
+      const res = await fetch(BREVO_ENDPOINT, {
+        method: "POST",
+        headers: {
+          "api-key": apiKey,
+          "content-type": "application/json",
+          accept: "application/json",
+        },
+        body: JSON.stringify({
+          sender: parseSender(RAW_MAIL_FROM),
+          to: [{ email: to }],
+          ...renderEmail(resetUrl),
+        }),
+        // fetch has no default timeout — cap it so a slow/hung API call can't
+        // freeze the reset request.
+        signal: AbortSignal.timeout(SEND_TIMEOUT_MS),
+      });
+
+      if (res.ok) return true;
+
+      const detail = await res.text().catch(() => "");
+      logger.error("Email provider rejected the reset email", {
+        status: res.status,
+        detail: detail.slice(0, 300),
+      });
     } catch (err) {
-      logger.error("Failed to send password reset email via SMTP", { err });
-      // fall through to logging the link
+      logger.error("Failed to send password reset email via provider API", { err });
     }
   }
 
-  // No working email transport — log the link so the reset is still usable.
+  // No API key, or the send failed — log the link so the reset stays usable.
   logger.warn("Password reset email not delivered; logging the link instead", { to, resetUrl });
   return false;
 }

@@ -9,7 +9,7 @@
     "start": "node dist/index.js",
     "test": "vitest run",
     "e2e:server": "tsx scripts/e2e-server.ts",
-    "verify-smtp": "tsx scripts/verify-smtp.ts"
+    "verify-email": "tsx scripts/verify-email.ts"
   },
   "engines": {
     "node": ">=20"

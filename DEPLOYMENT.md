@@ -28,10 +28,19 @@ Environment variables (all **required** in production — the server exits with 
 | `MONGODB_URI` | Atlas connection string |
 | `JWT_SECRET` | Long random string. **Generate a fresh one for production** — don't reuse the dev value. `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"` |
 | `CLIENT_ORIGIN` | The web app's exact origin, e.g. `https://coboard.vercel.app` — no trailing slash |
-| `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` | Real SMTP creds. Without them the mailer silently falls back to Ethereal (emails never delivered). |
-| `MAIL_FROM` | e.g. `"coboard" <no-reply@yourdomain.com>` |
+| `BREVO_API_KEY` | Brevo (or compatible) HTTP API key for sending password-reset email. Without it the mailer logs the reset link instead of sending (fine for local dev; in production reset email won't be delivered). |
+| `MAIL_FROM` | Sender, e.g. `coboard <no-reply@yourdomain.com>` — must be a **verified sender** in your email provider. |
 
 `PORT` is injected by the platform — the server already reads it.
+
+### Email is sent over an HTTPS API, not SMTP
+
+Password-reset email goes through Brevo's HTTP API (port 443). This is deliberate: **many hosts (including Render) block outbound SMTP ports (25/465/587)**, so SMTP-based email times out in production. An HTTPS API isn't port-blocked.
+
+Setup:
+1. Create a free [Brevo](https://www.brevo.com) account → **SMTP & API → API Keys** → create a key → set it as `BREVO_API_KEY`.
+2. **Senders → add and verify** the address in `MAIL_FROM` (a plain Gmail works for testing; a verified domain is better for deliverability so mail doesn't land in spam).
+3. Confirm it works before relying on it: `npm run verify-email -- you@example.com` (run with the same env as the server) — sends a real test email through the app's own send path.
 
 ## 3. Web app (`web/`)
 
@@ -55,12 +64,12 @@ After the web app has its final URL, set `CLIENT_ORIGIN` on the API to that exac
 2. Sign up → DevTools → Application → Cookies: `token` cookie shows **Secure** and **SameSite=None**.
 3. Open a board in two browsers → live cursors + drawing sync (Socket.IO over the cross-site cookie).
 4. Log out → cookie is actually gone.
-5. Forgot password → email arrives (real SMTP, not an Ethereal preview URL in the server logs).
+5. Forgot password → email arrives (real send via the provider API, not just a logged link).
 6. Six rapid failed logins → the sixth-through-tenth still respond, the eleventh returns 429.
 
 ## Local dev — unchanged
 
-`npm run dev` in both `server/` and `web/`. Cookies stay `SameSite=Lax` without `Secure` (required on plain-HTTP localhost); missing SMTP falls back to Ethereal preview URLs; `CLIENT_ORIGIN` defaults to `http://localhost:3000`.
+`npm run dev` in both `server/` and `web/`. Cookies stay `SameSite=Lax` without `Secure` (required on plain-HTTP localhost); with no `BREVO_API_KEY` the reset link is logged and shown on the forgot-password page instead of emailed; `CLIENT_ORIGIN` defaults to `http://localhost:3000`.
 
 ## Security posture notes
 
