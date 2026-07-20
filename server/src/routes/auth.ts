@@ -4,11 +4,10 @@ import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
 import { boards, items, users } from "../db.js";
-import { JWT_SECRET, CLIENT_ORIGIN, AUTH_COOKIE_NAME, AUTH_COOKIE_OPTIONS } from "../config.js";
+import { JWT_SECRET, CLIENT_ORIGIN, AUTH_COOKIE_NAME, AUTH_COOKIE_OPTIONS, IS_PROD } from "../config.js";
 import { isValidEmail, isValidPassword, isNonEmptyString, MIN_PASSWORD_LENGTH } from "../lib/validation.js";
 import { sendPasswordResetEmail } from "../lib/mailer.js";
 import { verifyToken } from "../lib/auth.js";
-import { logger } from "../lib/logger.js";
 import requireAuth from "../middleware/requireAuth.js";
 import { disconnectUserSockets, notifyBoardDeleted } from "../socket.js";
 
@@ -323,15 +322,18 @@ router.post("/forgot-password", forgotPasswordLimiter, async (req, res) => {
   );
 
   const resetUrl = `${CLIENT_ORIGIN}/reset-password?token=${rawToken}`;
-  try {
-    await sendPasswordResetEmail(user.email, resetUrl);
-  } catch (err) {
-    logger.error("Failed to send password reset email", { err });
-    res.status(500).json({ error: "Could not send the reset email. Try again later." });
-    return;
-  }
+  // Never throws: true if emailed, false if it fell back to logging the link.
+  // We always return 200 (even when the send fails) so this endpoint can't be
+  // used to discover which emails have accounts.
+  const emailed = await sendPasswordResetEmail(user.email, resetUrl);
 
-  res.status(200).json({ ok: true });
+  // Dev convenience: when no real email went out, hand the link back so the
+  // reset flow is testable without SMTP. Never exposed in production.
+  const body: { ok: true; resetUrl?: string } = { ok: true };
+  if (!IS_PROD && !emailed) {
+    body.resetUrl = resetUrl;
+  }
+  res.status(200).json(body);
 });
 
 router.post("/reset-password", resetPasswordLimiter, async (req, res) => {

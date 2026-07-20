@@ -121,6 +121,16 @@ export function getCursorColour(userId: string): string {
     return CURSOR_COLOURS[sum % CURSOR_COLOURS.length];
 }
 
+// True when focus is in a field where typing should win over canvas shortcuts —
+// e.g. the board-name <input>, note/text <textarea>s, or any contenteditable.
+// Guarding only on TEXTAREA let Backspace/Delete/Ctrl+Z etc. hijack typing in
+// the board-name input.
+function isEditableTarget(): boolean {
+    const el = document.activeElement as HTMLElement | null;
+    if (!el) return false;
+    return el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable;
+}
+
 export default function CanvasEditor({ roomId, selectedTool, selectedColour, onHistoryChange, onPresenceChange, onBoardDeleted, onCanvasStateChange }: CanvasEditorProps) {
     const [shapes, setShapes] = useState<Shape[]>([]);
     const [isDrawing, setIsDrawing] = useState(false);
@@ -477,7 +487,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
 
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
-            if (document.activeElement?.tagName === "TEXTAREA") return; // Leave text editing shortcuts alone.
+            if (isEditableTarget()) return; // Leave typing in inputs/textareas alone.
             if (e.ctrlKey && e.key === "z") {
                 e.preventDefault();
                 undo();
@@ -534,7 +544,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
         const el = canvasRef.current;
         if (!el) return;
         const onSelectStart = (e: Event) => {
-            if (document.activeElement?.tagName === "TEXTAREA") return;
+            if (isEditableTarget()) return;
             e.preventDefault();
         };
         el.addEventListener("selectstart", onSelectStart);

@@ -11,6 +11,18 @@ test.describe("boards", () => {
     await expect(page.getByRole("button", { name: "Square" })).toBeVisible();
   });
 
+  test("backspace works in the board-name field (not hijacked by canvas shortcuts)", async ({ page }) => {
+    await signUp(page);
+    await createBoard(page);
+
+    const nameField = page.getByPlaceholder("Untitled Board");
+    await nameField.fill("Hello");
+    await nameField.press("Backspace");
+    // If the global canvas keydown handler hijacked Backspace, the value would
+    // stay "Hello" (the keystroke gets preventDefault'd).
+    await expect(nameField).toHaveValue("Hell");
+  });
+
   test("a created board shows up under Recent boards", async ({ page }) => {
     await signUp(page);
     await createBoard(page);

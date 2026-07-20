@@ -9,6 +9,9 @@ export default function ForgotPassword() {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  // Dev-only: when no email transport is configured the server returns the
+  // reset link directly so the flow is testable without SMTP.
+  const [devResetUrl, setDevResetUrl] = useState<string | null>(null);
 
   async function handleSubmit(event: SyntheticEvent) {
     event.preventDefault();
@@ -42,6 +45,7 @@ export default function ForgotPassword() {
       return;
     }
 
+    if (data.resetUrl) setDevResetUrl(data.resetUrl);
     setSubmitted(true);
   }
 
@@ -53,10 +57,20 @@ export default function ForgotPassword() {
       footer={<span />}
     >
       {submitted ? (
-        <p className="text-sm text-neutral-600">
-          If an account exists for <span className="font-medium">{email}</span>, a reset
-          link is on its way. Check your inbox — the link is valid for 1 hour.
-        </p>
+        <div className="flex flex-col gap-3">
+          <p className="text-sm text-neutral-600">
+            If an account exists for <span className="font-medium">{email}</span>, a reset
+            link is on its way. Check your inbox — the link is valid for 1 hour.
+          </p>
+          {devResetUrl && (
+            <p className="rounded border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+              Dev mode (no email configured):{" "}
+              <a href={devResetUrl} className="font-medium underline underline-offset-2">
+                open your reset link
+              </a>
+            </p>
+          )}
+        </div>
       ) : (
         <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-5">
           <AuthField

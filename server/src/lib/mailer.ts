@@ -1,51 +1,36 @@
 import nodemailer, { type Transporter } from "nodemailer";
 import { logger } from "./logger.js";
 
-// Real SMTP is used when configured. Otherwise I use Ethereal and log a preview
-// link, which keeps local password-reset testing simple.
+// Sends over real SMTP when it's configured. When it isn't (or a send fails),
+// it logs the reset link instead of throwing — so the password-reset request
+// can never hang or 500, and the flow stays testable in local dev.
 const MAIL_FROM = process.env.MAIL_FROM || '"coboard" <no-reply@coboard.local>';
 
-let transporterPromise: Promise<{ transporter: Transporter; isEthereal: boolean }> | null = null;
-
-function getTransporter() {
-  if (!transporterPromise) {
-    transporterPromise = (async () => {
-      const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS } = process.env;
-
-      if (SMTP_HOST && SMTP_USER && SMTP_PASS) {
-        return {
-          transporter: nodemailer.createTransport({
-            host: SMTP_HOST,
-            port: Number(SMTP_PORT) || 587,
-            secure: Number(SMTP_PORT) === 465,
-            auth: { user: SMTP_USER, pass: SMTP_PASS },
-          }),
-          isEthereal: false,
-        };
-      }
-
-      const testAccount = await nodemailer.createTestAccount();
-      logger.info("mailer: no SMTP config found, using Ethereal test account", { user: testAccount.user });
-      return {
-        transporter: nodemailer.createTransport({
-          host: "smtp.ethereal.email",
-          port: 587,
-          secure: false,
-          auth: { user: testAccount.user, pass: testAccount.pass },
-        }),
-        isEthereal: true,
-      };
-    })();
-  }
-  return transporterPromise;
+function smtpConfigured(): boolean {
+  return Boolean(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS);
 }
 
-export async function sendPasswordResetEmail(to: string, resetUrl: string): Promise<void> {
-  const { transporter, isEthereal } = await getTransporter();
+let transporter: Transporter | null = null;
+function getTransporter(): Transporter {
+  if (!transporter) {
+    const port = Number(process.env.SMTP_PORT) || 587;
+    transporter = nodemailer.createTransport({
+      host: process.env.SMTP_HOST,
+      port,
+      secure: port === 465,
+      auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+      // Without these, an unreachable/misconfigured SMTP host makes sendMail
+      // hang indefinitely, which freezes the whole request. Fail in seconds.
+      connectionTimeout: 10_000,
+      greetingTimeout: 10_000,
+      socketTimeout: 15_000,
+    });
+  }
+  return transporter;
+}
 
-  const info = await transporter.sendMail({
-    from: MAIL_FROM,
-    to,
+function renderEmail(resetUrl: string) {
+  return {
     subject: "Reset your coboard password",
     text: `You requested a password reset for your coboard account.\n\nOpen this link to choose a new password (valid for 1 hour):\n${resetUrl}\n\nIf you didn't request this, you can safely ignore this email.`,
     html: `
@@ -68,9 +53,24 @@ export async function sendPasswordResetEmail(to: string, resetUrl: string): Prom
         </p>
       </div>
     `,
-  });
+  };
+}
 
-  if (isEthereal) {
-    logger.info("mailer: password reset email preview", { previewUrl: nodemailer.getTestMessageUrl(info) });
+// Returns true when the email was handed to an SMTP server, false when it fell
+// back to logging (no SMTP configured, or the send failed). Never throws, so
+// callers can't hang or leak send-failures to the client.
+export async function sendPasswordResetEmail(to: string, resetUrl: string): Promise<boolean> {
+  if (smtpConfigured()) {
+    try {
+      await getTransporter().sendMail({ from: MAIL_FROM, to, ...renderEmail(resetUrl) });
+      return true;
+    } catch (err) {
+      logger.error("Failed to send password reset email via SMTP", { err });
+      // fall through to logging the link
+    }
   }
+
+  // No working email transport — log the link so the reset is still usable.
+  logger.warn("Password reset email not delivered; logging the link instead", { to, resetUrl });
+  return false;
 }
