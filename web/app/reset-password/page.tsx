@@ -115,7 +115,14 @@ export default function ResetPassword() {
       eyebrow="Reset your password"
       title="Choose a new password."
       subtitle="Make it something you haven't used here before."
-      footer={<span />}
+      footer={
+        <Link
+          href="/login"
+          className="font-medium text-neutral-900 underline underline-offset-4 transition-colors hover:text-neutral-600 motion-reduce:transition-none"
+        >
+          ← Back to sign in
+        </Link>
+      }
     >
       <Suspense fallback={null}>
         <ResetPasswordForm />

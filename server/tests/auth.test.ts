@@ -152,6 +152,28 @@ describe("GET /health", () => {
   });
 });
 
+describe("email normalization", () => {
+  it("stores lowercased/trimmed email and matches regardless of case or whitespace", async () => {
+    const signup = await request(ctx.app)
+      .post("/auth/signup")
+      .send({ name: "Case Test", email: "  Mixed.Case@Example.COM ", password: "valid-password" });
+    expect(signup.status).toBe(201);
+    expect(signup.body.email).toBe("mixed.case@example.com");
+
+    // Login with different case + surrounding whitespace resolves to the account.
+    const login = await request(ctx.app)
+      .post("/auth/login")
+      .send({ email: "MIXED.CASE@example.com", password: "valid-password" });
+    expect(login.status).toBe(200);
+
+    // A different-case signup collides with the existing account.
+    const dup = await request(ctx.app)
+      .post("/auth/signup")
+      .send({ name: "Dup", email: "mixed.case@EXAMPLE.com", password: "valid-password" });
+    expect(dup.status).toBe(409);
+  });
+});
+
 describe("global error handler", () => {
   it("turns a malformed JSON body into a clean 400 with no stack trace", async () => {
     const res = await request(ctx.app)

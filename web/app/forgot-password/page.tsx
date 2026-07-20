@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type SyntheticEvent } from "react";
+import Link from "next/link";
 import AuthScaffold, { AuthField } from "@/components/AuthScaffold";
 import { isValidEmail } from "@/lib/validation";
 
@@ -54,7 +55,14 @@ export default function ForgotPassword() {
       eyebrow="Reset your password"
       title="Forgot your password?"
       subtitle="Enter the email on your account and we'll send you a reset link."
-      footer={<span />}
+      footer={
+        <Link
+          href="/login"
+          className="font-medium text-neutral-900 underline underline-offset-4 transition-colors hover:text-neutral-600 motion-reduce:transition-none"
+        >
+          ← Back to sign in
+        </Link>
+      }
     >
       {submitted ? (
         <div className="flex flex-col gap-3">

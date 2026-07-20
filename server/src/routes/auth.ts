@@ -5,7 +5,7 @@ import jwt from "jsonwebtoken";
 import crypto from "crypto";
 import { boards, items, users } from "../db.js";
 import { JWT_SECRET, CLIENT_ORIGIN, AUTH_COOKIE_NAME, AUTH_COOKIE_OPTIONS, IS_PROD } from "../config.js";
-import { isValidEmail, isValidPassword, isNonEmptyString, MIN_PASSWORD_LENGTH } from "../lib/validation.js";
+import { isValidEmail, isValidPassword, isNonEmptyString, normalizeEmail, MIN_PASSWORD_LENGTH } from "../lib/validation.js";
 import { sendPasswordResetEmail } from "../lib/mailer.js";
 import { verifyToken } from "../lib/auth.js";
 import requireAuth from "../middleware/requireAuth.js";
@@ -99,7 +99,8 @@ function setAuthCookie(
 }
 
 router.post("/signup", signupLimiter, async (req, res) => {
-  const { name, email, password } = req.body;
+  const { name, password } = req.body;
+  const email = normalizeEmail(req.body.email);
 
   if (!isNonEmptyString(name) || name.trim().length > MAX_DISPLAY_NAME_LENGTH) {
     res.status(400).json({ error: "Name is required" });
@@ -138,7 +139,8 @@ router.post("/signup", signupLimiter, async (req, res) => {
 });
 
 router.post("/login", loginLimiter, async (req, res) => {
-  const { email, password } = req.body;
+  const { password } = req.body;
+  const email = normalizeEmail(req.body.email);
 
   // Type checks stop Mongo operators from being passed as email or password.
   // The generic reply also avoids exposing which accounts exist.
@@ -297,7 +299,7 @@ router.delete("/account", requireAuth, deleteAccountLimiter, async (req, res) =>
 });
 
 router.post("/forgot-password", forgotPasswordLimiter, async (req, res) => {
-  const { email } = req.body;
+  const email = normalizeEmail(req.body.email);
   if (!isValidEmail(email)) {
     res.status(400).json({ error: "Enter a valid email address" });
     return;
