@@ -33,13 +33,13 @@ function parseSender(raw: string): { name: string; email: string } {
 function renderEmail(resetUrl: string) {
   return {
     subject: "Reset your coboard password",
-    textContent: `You requested a password reset for your coboard account.\n\nOpen this link to choose a new password (valid for 1 hour):\n${resetUrl}\n\nIf you didn't request this, you can safely ignore this email.`,
+    textContent: `You requested a password reset for your coboard account.\n\nOpen this link to choose a new password (valid for 3 hours):\n${resetUrl}\n\nIf you didn't request this, you can safely ignore this email.`,
     htmlContent: `
       <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto; color: #171717;">
         <h2 style="font-weight: 500;">Reset your password</h2>
         <p style="color: #525252; line-height: 1.6;">
           You requested a password reset for your coboard account.
-          Click the button below to choose a new password. The link is valid for 1 hour.
+          Click the button below to choose a new password. The link is valid for 3 hours.
         </p>
         <a href="${resetUrl}"
            style="display: inline-block; background: #171717; color: #ffffff; padding: 12px 24px; text-decoration: none; font-weight: 500; margin: 16px 0;">

@@ -14,7 +14,10 @@ import { disconnectUserSockets, notifyBoardDeleted } from "../socket.js";
 const router = Router();
 
 const SALT_ROUNDS = 10;
-const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour
+// 3 hours: new sending domains can sit in a mail provider's retry/deferral
+// queue for a while before actually landing, so 1 hour was expiring links
+// before some users ever received the email.
+const RESET_TOKEN_TTL_MS = 3 * 60 * 60 * 1000;
 const AUTH_COOKIE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 const MAX_DISPLAY_NAME_LENGTH = 80;
 

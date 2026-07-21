@@ -68,7 +68,11 @@ export default function ForgotPassword() {
         <div className="flex flex-col gap-3">
           <p className="text-sm text-neutral-600">
             If an account exists for <span className="font-medium">{email}</span>, a reset
-            link is on its way. Check your inbox — the link is valid for 1 hour.
+            link is on its way. Check your inbox — the link is valid for 3 hours.
+          </p>
+          <p className="text-sm text-neutral-500">
+            Delivery can occasionally take a little while to arrive — if it's not there in a
+            few minutes, check spam, then give it some time before requesting another.
           </p>
           {devResetUrl && (
             <p className="rounded border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
