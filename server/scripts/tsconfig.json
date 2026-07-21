@@ -1,0 +1,15 @@
+{
+  // Separate project just for editor/typecheck support in scripts/*.ts.
+  // These run via `tsx` directly (never compiled by the main build), so this
+  // config only needs to give the editor correct Node types — it must not
+  // share the main tsconfig's rootDir, since these files sit outside "src".
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "..",
+    "noEmit": true
+  },
+  // Scripts import from ../src, and src's ambient type augmentation
+  // (Express Request.userId/userEmail) only applies when src is part of
+  // this program too — not just transitively imported.
+  "include": ["../src", "."]
+}
