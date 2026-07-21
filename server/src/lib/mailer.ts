@@ -12,6 +12,15 @@ const BREVO_ENDPOINT = "https://api.brevo.com/v3/smtp/email";
 const RAW_MAIL_FROM = process.env.MAIL_FROM || "coboard <no-reply@coboard.local>";
 const SEND_TIMEOUT_MS = 15_000;
 
+// Optional: a real address you actually read, shown as Reply-To. This is a
+// normal, non-deceptive pattern (From: automated sender, Reply-To: a human
+// inbox) — unlike making the FROM address itself claim to be @gmail.com,
+// which Brevo cannot authenticate and which reads as spoofing to providers
+// that enforce DMARC on gmail.com (this is what silently dropped the earlier
+// test sends). MAIL_FROM should be Brevo's own verified sender/domain, not a
+// gmail.com address.
+const REPLY_TO = process.env.MAIL_REPLY_TO;
+
 // Parse `Name <email@host>` (or a bare address) into Brevo's sender shape.
 function parseSender(raw: string): { name: string; email: string } {
   const match = raw.match(/^\s*(.*?)\s*<([^>]+)>\s*$/);
@@ -65,6 +74,7 @@ export async function sendPasswordResetEmail(to: string, resetUrl: string): Prom
         body: JSON.stringify({
           sender: parseSender(RAW_MAIL_FROM),
           to: [{ email: to }],
+          ...(REPLY_TO ? { replyTo: { email: REPLY_TO } } : {}),
           ...renderEmail(resetUrl),
         }),
         // fetch has no default timeout — cap it so a slow/hung API call can't
