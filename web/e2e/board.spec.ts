@@ -99,4 +99,22 @@ test.describe("boards", () => {
     ]);
     expect(png.suggestedFilename()).toMatch(/\.png$/);
   });
+
+  test("zoom controls change the zoom level and reset", async ({ page }) => {
+    await signUp(page);
+    await createBoard(page);
+    await expect(page.getByTestId("disconnected-overlay")).toHaveCount(0);
+
+    const zoomLabel = page.getByRole("button", { name: "Reset zoom" });
+    await expect(zoomLabel).toHaveText("100%");
+
+    await page.getByRole("button", { name: "Zoom in" }).click();
+    await expect(zoomLabel).toHaveText("125%");
+
+    await zoomLabel.click(); // reset
+    await expect(zoomLabel).toHaveText("100%");
+
+    // At 100% (fit) zoom-out is the floor and should be disabled.
+    await expect(page.getByRole("button", { name: "Zoom out" })).toBeDisabled();
+  });
 });

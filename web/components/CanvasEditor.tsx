@@ -111,6 +111,13 @@ export const CANVAS_HEIGHT = 900;
 // Keep undo history useful without letting it grow forever.
 const MAX_HISTORY = 100;
 
+// User-controlled zoom, applied on top of the responsive fit-scale. 1 = fit
+// (the whole board fits the width, the baseline). Zooming in past 1 makes the
+// canvas larger than its viewport, which becomes scrollable to reach content.
+const ZOOM_MIN = 1;
+const ZOOM_MAX = 4;
+const ZOOM_STEP = 0.25;
+
 const TEXT_COLOUR = "#000000";
 const NOTE_COLOUR = "#fff9b1";
 
@@ -137,6 +144,11 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
     const canvasRef = useRef<HTMLDivElement | null>(null);
     const wrapperRef = useRef<HTMLDivElement | null>(null);
     const [scale, setScale] = useState(1);
+    // scale is the responsive fit-to-width factor; userZoom is the user's zoom
+    // on top of it. Everything that converts between screen and logical pixels
+    // (drawing math, react-rnd, the canvas transform) uses their product.
+    const [userZoom, setUserZoom] = useState(1);
+    const effectiveScale = scale * userZoom;
     const drawingId = useRef<string | null>(null);
     const startPoint = useRef<{ x: number; y: number } | null>(null);
     const lineDrag = useRef<{
@@ -696,9 +708,11 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
         const rect = canvasRef.current?.getBoundingClientRect();
         if (!rect) return { x: 0, y: 0 };
 
-        // DOM coordinates are scaled, so convert them back to logical pixels.
-        const rawX = (clientX - rect.left) / scale;
-        const rawY = (clientY - rect.top) / scale;
+        // DOM coordinates reflect fit-scale × zoom (and rect.left already
+        // accounts for any scroll offset), so divide by the effective scale to
+        // get logical pixels.
+        const rawX = (clientX - rect.left) / effectiveScale;
+        const rawY = (clientY - rect.top) / effectiveScale;
 
         return {
             x: clamp(rawX, 0, CANVAS_WIDTH),
@@ -1590,7 +1604,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
                 size={{ width: shape.width, height: shape.height }}
                 position={{ x: shape.x, y: shape.y }}
                 bounds="parent"
-                scale={scale}
+                scale={effectiveScale}
                 disableDragging={isDrawing || isGroupDragEligible(shape.id)}
                 enableResizing={!isDrawing && !shape.rotation}
                 onPointerDown={(e: React.PointerEvent<HTMLElement>) => {
@@ -1651,7 +1665,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
                 size={{ width: note.width, height: note.height }}
                 position={{ x: note.x, y: note.y }}
                 bounds="parent"
-                scale={scale}
+                scale={effectiveScale}
                 enableResizing={!note.rotation}
                 disableDragging={isGroupDragEligible(note.id)}
                 onPointerDown={(e: React.PointerEvent<HTMLElement>) => {
@@ -1702,7 +1716,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
                 size={{ width: textBox.width, height: textBox.height }}
                 position={{ x: textBox.x, y: textBox.y }}
                 bounds="parent"
-                scale={scale}
+                scale={effectiveScale}
                 enableResizing={!textBox.rotation}
                 disableDragging={isGroupDragEligible(textBox.id)}
                 onPointerDown={(e: React.PointerEvent<HTMLElement>) => {
@@ -1779,42 +1793,36 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
             className="relative mt-4 w-full overflow-hidden border"
             style={{ aspectRatio: `${CANVAS_WIDTH} / ${CANVAS_HEIGHT}` }}
         >
-            {/* Block edits while offline because reconnect replaces local state. */}
-            {!isConnected && (
-                <div
-                    data-testid="disconnected-overlay"
-                    className="absolute inset-0 z-20 flex items-center justify-center bg-white/60 backdrop-blur-[1px]"
-                >
-                    <div className="flex items-center gap-2 rounded-full bg-amber-50 px-3 py-1.5 text-sm font-medium text-amber-800 shadow">
-                        <span className="h-2 w-2 animate-pulse rounded-full bg-amber-500" />
-                        Reconnecting… editing paused
-                    </div>
-                </div>
-            )}
-            <div
-                ref={canvasRef}
-                data-testid="canvas"
-                onPointerDown={handlePointerDown}
-                onPointerMove={handlePointerMove}
-                onPointerUp={handlePointerUp}
-                onPointerLeave={handlePointerUp}
-                // A cancelled pointer (e.g. the OS taking over a touch) should
-                // end the in-progress draw/drag just like a normal pointer-up,
-                // so it can't leave a half-finished shape stuck to the cursor.
-                onPointerCancel={handlePointerUp}
-                className="relative origin-top-left"
-                style={{
-                    width: CANVAS_WIDTH,
-                    height: CANVAS_HEIGHT,
-                    transform: `scale(${scale})`,
-                    // touch-action: none lets pointer events drive drawing on
-                    // touch devices — without it the browser consumes the drag
-                    // as a scroll/pan gesture and no continuous pointermove
-                    // fires, so shapes can't be drawn. Mouse input is unaffected.
-                    touchAction: "none",
-                    ...getCanvasCursorStyle(),
-                }}
-            >
+            {/* Scroll viewport: when zoomed past 100% the canvas is larger than
+                this box and becomes scrollable to reach off-screen content. CSS
+                transforms don't create scroll area, so the sizer below carries
+                the zoomed dimensions while the canvas is visually scaled. */}
+            <div className="absolute inset-0 overflow-auto">
+                <div style={{ width: CANVAS_WIDTH * effectiveScale, height: CANVAS_HEIGHT * effectiveScale, overflow: "hidden" }}>
+                    <div
+                        ref={canvasRef}
+                        data-testid="canvas"
+                        onPointerDown={handlePointerDown}
+                        onPointerMove={handlePointerMove}
+                        onPointerUp={handlePointerUp}
+                        onPointerLeave={handlePointerUp}
+                        // A cancelled pointer (e.g. the OS taking over a touch) should
+                        // end the in-progress draw/drag just like a normal pointer-up,
+                        // so it can't leave a half-finished shape stuck to the cursor.
+                        onPointerCancel={handlePointerUp}
+                        className="relative origin-top-left"
+                        style={{
+                            width: CANVAS_WIDTH,
+                            height: CANVAS_HEIGHT,
+                            transform: `scale(${effectiveScale})`,
+                            // touch-action: none lets pointer events drive drawing on
+                            // touch devices — without it the browser consumes the drag
+                            // as a scroll/pan gesture and no continuous pointermove
+                            // fires, so shapes can't be drawn. Mouse input is unaffected.
+                            touchAction: "none",
+                            ...getCanvasCursorStyle(),
+                        }}
+                    >
                 {canvasItems.map((entry) => {
                     switch (entry.kind) {
                         case "shape":
@@ -1912,6 +1920,52 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
                         }}
                     />
                 )}
+                    </div>
+                </div>
+            </div>
+
+            {/* Blocks edits while offline (reconnect replaces local state).
+                Sits outside the scroll viewport so it always covers the canvas. */}
+            {!isConnected && (
+                <div
+                    data-testid="disconnected-overlay"
+                    className="absolute inset-0 z-20 flex items-center justify-center bg-white/60 backdrop-blur-[1px]"
+                >
+                    <div className="flex items-center gap-2 rounded-full bg-amber-50 px-3 py-1.5 text-sm font-medium text-amber-800 shadow">
+                        <span className="h-2 w-2 animate-pulse rounded-full bg-amber-500" />
+                        Reconnecting… editing paused
+                    </div>
+                </div>
+            )}
+
+            {/* Zoom controls — plain buttons, so they work with mouse and touch. */}
+            <div className="absolute bottom-3 right-3 z-30 flex items-center gap-1 rounded-md border border-neutral-200 bg-white/95 p-1 shadow-sm">
+                <button
+                    type="button"
+                    aria-label="Zoom out"
+                    onClick={() => setUserZoom((z) => Math.max(ZOOM_MIN, +(z - ZOOM_STEP).toFixed(2)))}
+                    disabled={userZoom <= ZOOM_MIN}
+                    className="grid h-8 w-8 place-items-center rounded text-lg leading-none text-neutral-700 hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                    −
+                </button>
+                <button
+                    type="button"
+                    aria-label="Reset zoom"
+                    onClick={() => setUserZoom(1)}
+                    className="min-w-[3.25rem] rounded px-1 text-center text-xs font-medium tabular-nums text-neutral-700 hover:bg-neutral-100"
+                >
+                    {Math.round(userZoom * 100)}%
+                </button>
+                <button
+                    type="button"
+                    aria-label="Zoom in"
+                    onClick={() => setUserZoom((z) => Math.min(ZOOM_MAX, +(z + ZOOM_STEP).toFixed(2)))}
+                    disabled={userZoom >= ZOOM_MAX}
+                    className="grid h-8 w-8 place-items-center rounded text-lg leading-none text-neutral-700 hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                    +
+                </button>
             </div>
         </div>
     )
