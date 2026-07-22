@@ -1,7 +1,7 @@
 import express, { type ErrorRequestHandler, type RequestHandler } from "express";
 import cookieParser from "cookie-parser";
 import helmet from "helmet";
-import { CLIENT_ORIGIN } from "./config.js";
+import { ALLOWED_ORIGINS } from "./config.js";
 import authRouter from "./routes/auth.js";
 import boardsRouter from "./routes/boards.js";
 import { logger } from "./lib/logger.js";
@@ -12,7 +12,7 @@ const MUTATING_METHODS = new Set(["POST", "PATCH", "PUT", "DELETE"]);
 const enforceOrigin: RequestHandler = (req, res, next) => {
   if (!MUTATING_METHODS.has(req.method)) return next();
   const origin = req.headers.origin;
-  if (origin && origin !== CLIENT_ORIGIN) {
+  if (origin && !ALLOWED_ORIGINS.includes(origin)) {
     res.status(403).json({ error: "Cross-origin request blocked" });
     return;
   }
@@ -54,7 +54,13 @@ export function buildApp(): express.Express {
   app.use(cookieParser());
   app.use(enforceOrigin);
   app.use((req, res, next) => {
-    res.setHeader("Access-Control-Allow-Origin", CLIENT_ORIGIN);
+    // Access-Control-Allow-Origin can only ever be one value, never a list —
+    // with multiple allowed origins we echo back the caller's own origin once
+    // it's confirmed to be on the allowlist, rather than a fixed origin.
+    const origin = req.headers.origin;
+    if (origin && ALLOWED_ORIGINS.includes(origin)) {
+      res.setHeader("Access-Control-Allow-Origin", origin);
+    }
     res.setHeader("Access-Control-Allow-Credentials", "true");
     res.setHeader("Access-Control-Allow-Headers", "Content-Type");
     res.setHeader("Access-Control-Allow-Methods", "GET,POST,PATCH,DELETE,OPTIONS");

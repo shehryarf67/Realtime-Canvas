@@ -1,7 +1,7 @@
 import type { Server as HTTPServer } from "http";
 import { Server } from "socket.io";
 import { boards, items, type Id, type Kind } from "./db.js";
-import { CLIENT_ORIGIN, AUTH_COOKIE_NAME } from "./config.js";
+import { ALLOWED_ORIGINS, AUTH_COOKIE_NAME } from "./config.js";
 import { verifyToken } from "./lib/auth.js";
 import { logger } from "./lib/logger.js";
 
@@ -69,7 +69,7 @@ export function initSocketServer(httpServer: HTTPServer): Server {
     // A canvas item should never need more than 256 KB, including pen strokes.
     maxHttpBufferSize: 256 * 1024,
     cors: {
-      origin: CLIENT_ORIGIN,
+      origin: ALLOWED_ORIGINS,
       methods: ["GET", "POST"],
       credentials: true,
     },
