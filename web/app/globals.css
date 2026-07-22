@@ -12,12 +12,11 @@
   --font-mono: "Courier New", Courier, monospace;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
+/* The app is intentionally light-only (every page hardcodes light colours).
+   The create-next-app dark-mode block was left out on purpose — with it, a
+   device set to dark mode gave the <body> a near-black background that showed
+   through wherever a page didn't fully cover the viewport (e.g. below the
+   canvas on tall/portrait screens). */
 
 body {
   background: var(--background);

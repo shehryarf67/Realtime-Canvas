@@ -1798,11 +1798,20 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
                 onPointerMove={handlePointerMove}
                 onPointerUp={handlePointerUp}
                 onPointerLeave={handlePointerUp}
+                // A cancelled pointer (e.g. the OS taking over a touch) should
+                // end the in-progress draw/drag just like a normal pointer-up,
+                // so it can't leave a half-finished shape stuck to the cursor.
+                onPointerCancel={handlePointerUp}
                 className="relative origin-top-left"
                 style={{
                     width: CANVAS_WIDTH,
                     height: CANVAS_HEIGHT,
                     transform: `scale(${scale})`,
+                    // touch-action: none lets pointer events drive drawing on
+                    // touch devices — without it the browser consumes the drag
+                    // as a scroll/pan gesture and no continuous pointermove
+                    // fires, so shapes can't be drawn. Mouse input is unaffected.
+                    touchAction: "none",
                     ...getCanvasCursorStyle(),
                 }}
             >
