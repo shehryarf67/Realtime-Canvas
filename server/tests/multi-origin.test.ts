@@ -2,8 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import request from "supertest";
 import { createTestApp, type TestContext } from "./helpers.js";
 
-// Own file so config.ts/app.ts load fresh with this comma-separated
-// CLIENT_ORIGIN, rather than reusing another test file's single-origin config.
+// A separate module load gives this test its own multi-origin config.
 
 const ORIGIN_A = "https://coboard.example.com";
 const ORIGIN_B = "http://localhost:3000";

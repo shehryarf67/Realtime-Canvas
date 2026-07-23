@@ -111,9 +111,7 @@ export const CANVAS_HEIGHT = 900;
 // Keep undo history useful without letting it grow forever.
 const MAX_HISTORY = 100;
 
-// User-controlled zoom, applied on top of the responsive fit-scale. 1 = fit
-// (the whole board fits the width, the baseline). Zooming in past 1 makes the
-// canvas larger than its viewport, which becomes scrollable to reach content.
+// Manual zoom sits on top of fit-to-width scaling. Fit is the minimum.
 const ZOOM_MIN = 1;
 const ZOOM_MAX = 4;
 const ZOOM_STEP = 0.25;
@@ -128,10 +126,7 @@ export function getCursorColour(userId: string): string {
     return CURSOR_COLOURS[sum % CURSOR_COLOURS.length];
 }
 
-// True when focus is in a field where typing should win over canvas shortcuts —
-// e.g. the board-name <input>, note/text <textarea>s, or any contenteditable.
-// Guarding only on TEXTAREA let Backspace/Delete/Ctrl+Z etc. hijack typing in
-// the board-name input.
+// Canvas shortcuts stay off while typing in any editable field.
 function isEditableTarget(): boolean {
     const el = document.activeElement as HTMLElement | null;
     if (!el) return false;
@@ -144,9 +139,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
     const canvasRef = useRef<HTMLDivElement | null>(null);
     const wrapperRef = useRef<HTMLDivElement | null>(null);
     const [scale, setScale] = useState(1);
-    // scale is the responsive fit-to-width factor; userZoom is the user's zoom
-    // on top of it. Everything that converts between screen and logical pixels
-    // (drawing math, react-rnd, the canvas transform) uses their product.
+    // effectiveScale combines responsive fit and manual zoom.
     const [userZoom, setUserZoom] = useState(1);
     const effectiveScale = scale * userZoom;
     const drawingId = useRef<string | null>(null);
@@ -193,8 +186,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
     const [selectedIds, setSelectedIds] = useState<Set<string | number>>(new Set());
     // Only the active note or text box accepts typing. Other clicks select items.
     const [editingId, setEditingId] = useState<string | number | null>(null);
-    // The textarea currently being edited, so we can collapse its selection
-    // when editing ends regardless of which exit path was taken.
+    // Keep the active textarea so its highlight can be cleared on every exit path.
     const editingElRef = useRef<HTMLTextAreaElement | null>(null);
     const marqueeStart = useRef<Point | null>(null);
     const [marqueeRect, setMarqueeRect] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
@@ -247,8 +239,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
         placeCopies(clipboard.current, 20);
     }
 
-    // Duplicate the current selection in place (Ctrl+D). Sources from the live
-    // selection rather than the clipboard, so it works without a prior copy.
+    // Duplicate uses the live selection, so it does not need a previous copy.
     function duplicateSelection() {
         const selectedShapes = shapes.filter((s) => selectedIds.has(s.id));
         const selectedNotes = notes.filter((n) => selectedIds.has(n.id));
@@ -257,9 +248,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
         placeCopies({ shapes: selectedShapes, notes: selectedNotes, texts: selectedTexts }, 20);
     }
 
-    // Clone a set of items with a positional offset, add them, broadcast the
-    // adds, record one undo step, and select the new copies. Shared by paste
-    // and duplicate.
+    // Paste and duplicate share one clone, broadcast and history path.
     function placeCopies(
         source: { shapes: Shape[]; notes: Note[]; texts: TextBox[] },
         offset: number
@@ -536,7 +525,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
                 e.preventDefault();
                 copySelection();
             } else if (e.ctrlKey && (e.key === "d" || e.key === "D")) {
-                // Ctrl+D is "bookmark page" in browsers; preventDefault stops that.
+                // Stop the browser bookmark shortcut before duplicating.
                 e.preventDefault();
                 duplicateSelection();
             } else if (e.key === "Delete" || e.key === "Backspace") {
@@ -568,18 +557,10 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
         shapesRef.current = shapes;
     }, [shapes]);
 
-    // The textarea only exists after render, so focus it from this effect.
-    // The double-click that opens edit mode lands on the wrapper div while the
-    // textarea is still readOnly/pointer-events-none, so the browser's native
-    // double-click selection never reaches it. Select all the existing text on
-    // entry so a double-click behaves like the user expects: text highlighted
-    // and ready to replace.
+    // The textarea becomes editable after render, so focus and select it here.
     useEffect(() => {
         if (editingId == null) {
-            // Editing just ended (blur, canvas click, Escape, etc.). Collapse
-            // the selection on the textarea we were editing — a read-only
-            // textarea keeps painting its last selection as a grey highlight
-            // otherwise — and clear any document-level selection too.
+            // Clear the old highlight when editing ends.
             const prev = editingElRef.current;
             if (prev) {
                 prev.setSelectionRange(0, 0);
@@ -594,10 +575,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
         if (!el) return;
         editingElRef.current = el;
         el.focus();
-        // Defer the select to the next frame: the browser applies its own
-        // native double-click "select word" default *after* our React handlers
-        // run, which would clobber a synchronous select(). Selecting next frame
-        // lets our full-text selection win.
+        // Select next frame so the browser's double-click word selection runs first.
         const raf = requestAnimationFrame(() => el.select());
         return () => cancelAnimationFrame(raf);
     }, [editingId]);
@@ -760,9 +738,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
         const rect = canvasRef.current?.getBoundingClientRect();
         if (!rect) return { x: 0, y: 0 };
 
-        // DOM coordinates reflect fit-scale × zoom (and rect.left already
-        // accounts for any scroll offset), so divide by the effective scale to
-        // get logical pixels.
+        // Convert fitted and zoomed DOM coordinates back to logical pixels.
         const rawX = (clientX - rect.left) / effectiveScale;
         const rawY = (clientY - rect.top) / effectiveScale;
 
@@ -1735,8 +1711,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
                         e.stopPropagation();
                         deleteNote(note.id);
                     } else if (selectedTool === "select") {
-                        // While editing this note, leave pointer events to the
-                        // textarea (text selection) — no select/drag handling.
+                        // While editing, pointer events belong to the textarea.
                         if (editingId === note.id) return;
                         e.stopPropagation();
                         handleShapeSelect(e, note.id);
@@ -1789,8 +1764,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
                         e.stopPropagation();
                         deleteText(textBox.id);
                     } else if (selectedTool === "select") {
-                        // While editing this text box, leave pointer events to
-                        // the textarea (text selection) — no select/drag handling.
+                        // While editing, pointer events belong to the textarea.
                         if (editingId === textBox.id) return;
                         e.stopPropagation();
                         handleShapeSelect(e, textBox.id);
@@ -1861,10 +1835,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
             className="relative mt-4 w-full overflow-hidden border"
             style={{ aspectRatio: `${CANVAS_WIDTH} / ${CANVAS_HEIGHT}` }}
         >
-            {/* Scroll viewport: when zoomed past 100% the canvas is larger than
-                this box and becomes scrollable to reach off-screen content. CSS
-                transforms don't create scroll area, so the sizer below carries
-                the zoomed dimensions while the canvas is visually scaled. */}
+            {/* The outer sizer creates scroll space because transforms do not. */}
             <div className="absolute inset-0 overflow-auto">
                 <div style={{ width: CANVAS_WIDTH * effectiveScale, height: CANVAS_HEIGHT * effectiveScale, overflow: "hidden" }}>
                     <div
@@ -1874,19 +1845,14 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
                         onPointerMove={handlePointerMove}
                         onPointerUp={handlePointerUp}
                         onPointerLeave={handlePointerUp}
-                        // A cancelled pointer (e.g. the OS taking over a touch) should
-                        // end the in-progress draw/drag just like a normal pointer-up,
-                        // so it can't leave a half-finished shape stuck to the cursor.
+                        // Cancelled touch input should finish like pointer-up.
                         onPointerCancel={handlePointerUp}
                         className="relative origin-top-left"
                         style={{
                             width: CANVAS_WIDTH,
                             height: CANVAS_HEIGHT,
                             transform: `scale(${effectiveScale})`,
-                            // touch-action: none lets pointer events drive drawing on
-                            // touch devices — without it the browser consumes the drag
-                            // as a scroll/pan gesture and no continuous pointermove
-                            // fires, so shapes can't be drawn. Mouse input is unaffected.
+                            // Let pointer events draw instead of browser touch panning.
                             touchAction: "none",
                             ...getCanvasCursorStyle(),
                         }}
@@ -2006,7 +1972,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
                 </div>
             )}
 
-            {/* Zoom controls — plain buttons, so they work with mouse and touch. */}
+            {/* Plain zoom buttons work with mouse and touch. */}
             <div className="absolute bottom-3 right-3 z-30 flex items-center gap-1 rounded-md border border-neutral-200 bg-white/95 p-1 shadow-sm">
                 <button
                     type="button"

@@ -13,9 +13,7 @@ export function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
 }
 
-// Canonical form for storing and looking up emails: trimmed + lowercased, so
-// "Foo@X.com " and "foo@x.com" resolve to the same account. Returns "" for
-// non-strings, which then fails isValidEmail — closing NoSQL-injection inputs.
+// Store emails trimmed and lowercase. Non-strings become invalid empty input.
 export function normalizeEmail(email: unknown): string {
   return typeof email === "string" ? email.trim().toLowerCase() : "";
 }

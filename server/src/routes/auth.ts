@@ -14,9 +14,7 @@ import { disconnectUserSockets, notifyBoardDeleted } from "../socket.js";
 const router = Router();
 
 const SALT_ROUNDS = 10;
-// 3 hours: new sending domains can sit in a mail provider's retry/deferral
-// queue for a while before actually landing, so 1 hour was expiring links
-// before some users ever received the email.
+// Three hours leaves room for delayed delivery from a new sending domain.
 const RESET_TOKEN_TTL_MS = 3 * 60 * 60 * 1000;
 const AUTH_COOKIE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 const MAX_DISPLAY_NAME_LENGTH = 80;
@@ -327,13 +325,10 @@ router.post("/forgot-password", forgotPasswordLimiter, async (req, res) => {
   );
 
   const resetUrl = `${CLIENT_ORIGIN}/reset-password?token=${rawToken}`;
-  // Never throws: true if emailed, false if it fell back to logging the link.
-  // We always return 200 (even when the send fails) so this endpoint can't be
-  // used to discover which emails have accounts.
+  // Delivery failure still returns 200 so account emails cannot be discovered.
   const emailed = await sendPasswordResetEmail(user.email, resetUrl);
 
-  // Dev convenience: when no real email went out, hand the link back so the
-  // reset flow is testable without SMTP. Never exposed in production.
+  // Local dev gets the fallback link directly; production never exposes it.
   const body: { ok: true; resetUrl?: string } = { ok: true };
   if (!IS_PROD && !emailed) {
     body.resetUrl = resetUrl;

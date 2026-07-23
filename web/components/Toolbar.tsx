@@ -24,8 +24,7 @@ const colours = [
     "#a855f7",
 ];
 
-// The tool palette, in display order. `label` doubles as the accessible name
-// (and the name existing tests target); `description` is the hover tooltip.
+// Labels are also accessible names; descriptions are shown in tooltips.
 const tools: { tool: Tool; label: string; description: string; icon: ReactNode }[] = [
     { tool: "select", label: "Select", description: "Select, move & resize items", icon: <MousePointer2 size={18} /> },
     { tool: "square", label: "Square", description: "Draw a rectangle", icon: <Square size={18} /> },
@@ -38,8 +37,7 @@ const tools: { tool: Tool; label: string; description: string; icon: ReactNode }
     { tool: "eraser", label: "Eraser", description: "Erase items", icon: <Eraser size={18} /> },
 ];
 
-// A toolbar button with a styled hover/focus tooltip. `group`/`group-hover`
-// drives the popup so it needs no JS state.
+// CSS group states handle tooltips without extra React state.
 function ToolButton({
     label,
     description,
@@ -53,8 +51,7 @@ function ToolButton({
     description: string;
     active?: boolean;
     disabled?: boolean;
-    // Which edge the tooltip anchors to so it never runs off-screen: left-side
-    // buttons grow rightward, right-side buttons grow leftward.
+    // Tooltips open inward so edge buttons do not overflow the screen.
     align?: "left" | "right";
     onClick?: () => void;
     children: ReactNode;

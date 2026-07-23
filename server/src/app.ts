@@ -54,9 +54,7 @@ export function buildApp(): express.Express {
   app.use(cookieParser());
   app.use(enforceOrigin);
   app.use((req, res, next) => {
-    // Access-Control-Allow-Origin can only ever be one value, never a list —
-    // with multiple allowed origins we echo back the caller's own origin once
-    // it's confirmed to be on the allowlist, rather than a fixed origin.
+    // CORS accepts one response origin, so echo the caller after allowlist checks.
     const origin = req.headers.origin;
     if (origin && ALLOWED_ORIGINS.includes(origin)) {
       res.setHeader("Access-Control-Allow-Origin", origin);

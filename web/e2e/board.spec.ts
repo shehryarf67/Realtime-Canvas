@@ -18,8 +18,7 @@ test.describe("boards", () => {
     const nameField = page.getByPlaceholder("Untitled Board");
     await nameField.fill("Hello");
     await nameField.press("Backspace");
-    // If the global canvas keydown handler hijacked Backspace, the value would
-    // stay "Hello" (the keystroke gets preventDefault'd).
+    // Canvas shortcuts must not steal Backspace from the board name field.
     await expect(nameField).toHaveValue("Hell");
   });
 
@@ -114,7 +113,7 @@ test.describe("boards", () => {
     await zoomLabel.click(); // reset
     await expect(zoomLabel).toHaveText("100%");
 
-    // At 100% (fit) zoom-out is the floor and should be disabled.
+    // Fit-to-screen is the minimum zoom.
     await expect(page.getByRole("button", { name: "Zoom out" })).toBeDisabled();
   });
 });

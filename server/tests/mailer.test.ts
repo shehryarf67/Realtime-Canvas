@@ -1,9 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { sendPasswordResetEmail } from "../src/lib/mailer.js";
 
-// Guards the fix for the "reset stays stuck on Sending…" bug: with no email
-// provider configured, the mailer must fall back to logging the link and return
-// false quickly — never throwing or hanging (which would freeze the request).
+// Missing mail config should fall back quickly instead of hanging the reset form.
 describe("sendPasswordResetEmail without a provider configured", () => {
   it("returns false without throwing", async () => {
     delete process.env.BREVO_API_KEY;
@@ -16,10 +14,7 @@ describe("sendPasswordResetEmail without a provider configured", () => {
   });
 });
 
-// Guards the fix for the silently-dropped emails: MAIL_FROM must never be
-// forced to look like it's a gmail.com address (Brevo can't authenticate that,
-// and providers enforcing DMARC drop it) — sender/replyTo are read from env
-// and sent to Brevo as-is, whatever the operator configures.
+// Sender and reply-to must reach Brevo exactly as configured for DMARC delivery.
 describe("sendPasswordResetEmail request payload", () => {
   const ORIGINAL_ENV = { ...process.env };
   let fetchMock: ReturnType<typeof vi.fn>;

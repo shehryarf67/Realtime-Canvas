@@ -1,10 +1,8 @@
-// Sends a real password-reset-style email through the configured provider so
-// you can confirm delivery works before relying on it. Uses the exact same
-// code path the app uses.
+// Send a test message through the same path used by password resets.
 //
 //   npm run verify-email -- you@example.com
 //
-// Run it with the same env the server uses (needs BREVO_API_KEY + MAIL_FROM).
+// Run with the server env so Brevo and sender settings are available.
 import "dotenv/config";
 import { sendPasswordResetEmail } from "../src/lib/mailer.js";
 
@@ -22,6 +20,4 @@ if (!to) {
   }
 }
 
-// Setting exitCode (not calling process.exit()) lets Node close fetch's
-// underlying network handles on its own — forcing exit while they're still
-// closing triggers a libuv assertion crash on Windows.
+// exitCode lets fetch close its handles cleanly before Node exits on Windows.

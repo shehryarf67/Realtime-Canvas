@@ -10,8 +10,7 @@ export default function ForgotPassword() {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
-  // Dev-only: when no email transport is configured the server returns the
-  // reset link directly so the flow is testable without SMTP.
+  // Local dev can show the fallback link when email delivery is unavailable.
   const [devResetUrl, setDevResetUrl] = useState<string | null>(null);
 
   async function handleSubmit(event: SyntheticEvent) {

@@ -1,27 +1,16 @@
 import { logger } from "./logger.js";
 
-// Sends password-reset email via Brevo's HTTP API (over HTTPS/443) rather than
-// SMTP. Hosts like Render block outbound SMTP ports (25/465/587), which makes
-// SMTP unreliable in production; an HTTPS API is not port-blocked.
-//
-// Set BREVO_API_KEY to enable real delivery. Without it (or on any failure) the
-// reset link is logged instead of thrown, so the request never hangs or 500s
-// and the flow stays testable in local dev (the link is also surfaced on the
-// page in non-production).
+// Brevo uses HTTPS because the production host blocks normal SMTP ports.
+// Missing config or send failures fall back to logging the reset link.
 const BREVO_ENDPOINT = "https://api.brevo.com/v3/smtp/email";
 const RAW_MAIL_FROM = process.env.MAIL_FROM || "coboard <no-reply@coboard.local>";
 const SEND_TIMEOUT_MS = 15_000;
 
-// Optional: a real address you actually read, shown as Reply-To. This is a
-// normal, non-deceptive pattern (From: automated sender, Reply-To: a human
-// inbox) — unlike making the FROM address itself claim to be @gmail.com,
-// which Brevo cannot authenticate and which reads as spoofing to providers
-// that enforce DMARC on gmail.com (this is what silently dropped the earlier
-// test sends). MAIL_FROM should be Brevo's own verified sender/domain, not a
-// gmail.com address.
+// MAIL_FROM must be a verified Brevo sender. A personal inbox belongs in
+// MAIL_REPLY_TO because using it as From can fail DMARC checks.
 const REPLY_TO = process.env.MAIL_REPLY_TO;
 
-// Parse `Name <email@host>` (or a bare address) into Brevo's sender shape.
+// Accept either "Name <email@host>" or a bare sender address.
 function parseSender(raw: string): { name: string; email: string } {
   const match = raw.match(/^\s*(.*?)\s*<([^>]+)>\s*$/);
   if (match && match[2]) {
@@ -57,8 +46,7 @@ function renderEmail(resetUrl: string) {
   };
 }
 
-// Returns true if the email was accepted by the provider, false when it fell
-// back to logging (no API key, or the send failed). Never throws.
+// Return false after the safe logging fallback instead of throwing.
 export async function sendPasswordResetEmail(to: string, resetUrl: string): Promise<boolean> {
   const apiKey = process.env.BREVO_API_KEY;
 
@@ -77,8 +65,7 @@ export async function sendPasswordResetEmail(to: string, resetUrl: string): Prom
           ...(REPLY_TO ? { replyTo: { email: REPLY_TO } } : {}),
           ...renderEmail(resetUrl),
         }),
-        // fetch has no default timeout — cap it so a slow/hung API call can't
-        // freeze the reset request.
+        // Keep a slow provider from holding the reset request open forever.
         signal: AbortSignal.timeout(SEND_TIMEOUT_MS),
       });
 
@@ -94,7 +81,7 @@ export async function sendPasswordResetEmail(to: string, resetUrl: string): Prom
     }
   }
 
-  // No API key, or the send failed — log the link so the reset stays usable.
+  // Keep local resets usable when delivery is not available.
   logger.warn("Password reset email not delivered; logging the link instead", { to, resetUrl });
   return false;
 }

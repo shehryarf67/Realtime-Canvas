@@ -21,9 +21,7 @@ export const PORT = Number(process.env.PORT) || 4000;
 export const MONGODB_URI = requireEnv("MONGODB_URI");
 export const JWT_SECRET = requireEnv("JWT_SECRET");
 
-// CLIENT_ORIGIN accepts one or more comma-separated origins (e.g. a deployed
-// frontend + localhost while developing against a deployed API), so switching
-// between local and production testing doesn't require editing this value.
+// Comma-separated origins allow the deployed frontend and local dev together.
 function parseOrigins(raw: string): string[] {
   return raw
     .split(",")
@@ -41,9 +39,7 @@ if (ALLOWED_ORIGINS.length === 0) {
   process.exit(1);
 }
 
-// The canonical origin used to build absolute links (e.g. the password-reset
-// email) — only one concrete URL makes sense there, so we use the first
-// configured origin. Put the origin you want reset links to point at first.
+// Absolute links use the first configured origin, so ordering matters here.
 export const CLIENT_ORIGIN = ALLOWED_ORIGINS[0]!;
 
 export const AUTH_COOKIE_NAME = "token";
