@@ -155,7 +155,7 @@ function AccountSettings({
       <div className="relative mx-auto max-w-3xl">
         <div className="flex items-center justify-between gap-4">
           <Link href="/" className="text-sm font-medium text-neutral-600 transition-colors hover:text-neutral-900">← Back home</Link>
-          <span className="font-mono text-xs text-neutral-500">Account settings</span>
+          <span className="font-mono text-sm tracking-wide text-neutral-600">Account settings</span>
         </div>
 
         <h1 className="mt-12 text-3xl font-medium tracking-tight sm:text-4xl">Your account</h1>

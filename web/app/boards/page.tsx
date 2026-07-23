@@ -131,7 +131,7 @@ export default function Boards() {
           </button>
         </div>
 
-        <p className="mt-12 font-mono text-xs font-normal tracking-tight text-neutral-500">
+        <p className="mt-12 font-mono text-sm font-normal tracking-wide text-neutral-600">
           Your boards
         </p>
         <h1 className="mt-3 text-3xl font-medium tracking-tight sm:text-4xl">
@@ -213,7 +213,7 @@ export default function Boards() {
                   ) : (
                     <span className="truncate text-sm font-medium">{board.name}</span>
                   )}
-                  <span className="shrink-0 font-mono text-xs text-neutral-500">
+                  <span className="shrink-0 font-mono text-xs text-neutral-600">
                     {relativeTime(board.lastEditedAt)}
                   </span>
                 </div>

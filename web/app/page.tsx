@@ -251,7 +251,7 @@ export default function Home() {
             )}
           </div>
 
-          <p className="mt-12 font-mono text-xs font-normal tracking-tight text-neutral-500">
+          <p className="mt-12 font-mono text-sm font-normal tracking-wide text-neutral-600">
             Realtime collaborative canvas
           </p>
           <h1 className="mt-4 max-w-xl text-4xl font-medium leading-[1.05] tracking-tight text-neutral-900 sm:text-5xl lg:text-6xl">
@@ -352,7 +352,7 @@ export default function Home() {
           {auth?.user && boards.length > 0 && (
             <div className="mt-14">
               <div className="flex items-baseline justify-between">
-                <p className="font-mono text-xs font-normal tracking-tight text-neutral-500">
+                <p className="font-mono text-sm font-normal tracking-wide text-neutral-600">
                   Recent boards
                 </p>
                 <Link
@@ -372,7 +372,7 @@ export default function Home() {
                       <span className="truncate text-sm font-medium text-neutral-900 underline-offset-4 group-hover:underline">
                         {board.name}
                       </span>
-                      <span className="shrink-0 font-mono text-xs text-neutral-500">
+                      <span className="shrink-0 font-mono text-xs text-neutral-600">
                         {relativeTime(board.lastEditedAt)}
                       </span>
                     </Link>

@@ -84,7 +84,7 @@ export default function AuthScaffold({
             </span>
           </Link>
 
-          <p className="mt-12 font-mono text-xs font-normal tracking-tight text-neutral-500">
+          <p className="mt-12 font-mono text-sm font-normal tracking-wide text-neutral-600">
             {eyebrow}
           </p>
           <h1 className="mt-4 text-3xl font-medium leading-[1.1] tracking-tight text-neutral-900 sm:text-4xl">
