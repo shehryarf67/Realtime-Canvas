@@ -1,4 +1,5 @@
 import { MousePointer2, Square, Triangle, Minus, Type, Circle, StickyNote, Eraser, Undo2, Redo2, Pen } from "lucide-react"
+import type { ReactNode } from "react";
 import type { Tool } from "@/types/shape";
 
 type ToolbarProps = {
@@ -23,73 +24,77 @@ const colours = [
     "#a855f7",
 ];
 
+// The tool palette, in display order. `label` doubles as the accessible name
+// (and the name existing tests target); `description` is the hover tooltip.
+const tools: { tool: Tool; label: string; description: string; icon: ReactNode }[] = [
+    { tool: "select", label: "Select", description: "Select, move & resize items", icon: <MousePointer2 size={18} /> },
+    { tool: "square", label: "Square", description: "Draw a rectangle", icon: <Square size={18} /> },
+    { tool: "circle", label: "Circle", description: "Draw a circle", icon: <Circle size={18} /> },
+    { tool: "triangle", label: "Triangle", description: "Draw a triangle", icon: <Triangle size={18} /> },
+    { tool: "pen", label: "Pen", description: "Freehand drawing", icon: <Pen size={18} /> },
+    { tool: "line", label: "Line", description: "Draw a straight line", icon: <Minus size={18} /> },
+    { tool: "text", label: "Text", description: "Add a text box", icon: <Type size={18} /> },
+    { tool: "note", label: "Note", description: "Add a sticky note", icon: <StickyNote size={18} /> },
+    { tool: "eraser", label: "Eraser", description: "Erase items", icon: <Eraser size={18} /> },
+];
+
+// A toolbar button with a styled hover/focus tooltip. `group`/`group-hover`
+// drives the popup so it needs no JS state.
+function ToolButton({
+    label,
+    description,
+    active,
+    disabled,
+    align = "left",
+    onClick,
+    children,
+}: {
+    label: string;
+    description: string;
+    active?: boolean;
+    disabled?: boolean;
+    // Which edge the tooltip anchors to so it never runs off-screen: left-side
+    // buttons grow rightward, right-side buttons grow leftward.
+    align?: "left" | "right";
+    onClick?: () => void;
+    children: ReactNode;
+}) {
+    return (
+        <div className="relative flex">
+            <button
+                type="button"
+                aria-label={label}
+                disabled={disabled}
+                className={`peer p-2 bg-gray-200 hover:bg-gray-300 text-black rounded border disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-gray-200 ${active ? "ring-2 ring-blue-500 text-white" : "border-transparent"}`}
+                onClick={onClick}
+            >
+                {children}
+            </button>
+            <span
+                role="tooltip"
+                className={`pointer-events-none absolute top-full z-50 mt-2 max-w-[60vw] whitespace-nowrap rounded bg-neutral-800 px-2 py-1 text-xs font-medium text-white opacity-0 shadow-md transition-opacity duration-150 peer-hover:opacity-100 peer-focus-visible:opacity-100 ${align === "right" ? "right-0" : "left-0"}`}
+            >
+                {description}
+            </span>
+        </div>
+    );
+}
+
 export default function Toolbar({ selectedTool, onSelectTool, selectedColour, onSelectedColourChange, onUndo, onRedo, canUndo, canRedo }: ToolbarProps) {
 
     return (
         <div className="flex flex-wrap items-center gap-2">
-            <button
-                aria-label="Select"
-                className={`p-2 bg-gray-200 hover:bg-gray-300 text-black rounded border ${selectedTool === "select" ? "ring-2 ring-blue-500 text-white" : "border-transparent"}`}
-                onClick={() => onSelectTool("select")}
-            >
-                <MousePointer2 size={18} />
-            </button>
-            <button
-                aria-label="Square"
-                className={`p-2 bg-gray-200 hover:bg-gray-300 text-black rounded border ${selectedTool === "square" ? "ring-2 ring-blue-500 text-white" : "border-transparent"}`}
-                onClick={() => onSelectTool("square")}
-            >
-                <Square size={18} />
-            </button>
-            <button
-                aria-label="Circle"
-                className={`p-2 bg-gray-200 hover:bg-gray-300 text-black rounded border ${selectedTool === "circle" ? "ring-2 ring-blue-500 text-white" : "border-transparent"}`}
-                onClick={() => onSelectTool("circle")}
-            >
-                <Circle size={18} />
-            </button>
-            <button
-                aria-label="Triangle"
-                className={`p-2 bg-gray-200 hover:bg-gray-300 text-black rounded border ${selectedTool === "triangle" ? "ring-2 ring-blue-500 text-white" : "border-transparent"}`}
-                onClick={() => onSelectTool("triangle")}
-            >
-                <Triangle size={18} />
-            </button>
-            <button
-                aria-label="Pen"
-                className={`p-2 bg-gray-200 hover:bg-gray-300 text-black rounded border ${selectedTool === "pen" ? "ring-2 ring-blue-500 text-white" : "border-transparent"}`}
-                onClick={() => onSelectTool("pen")}
-            >
-                <Pen size={18} />
-            </button>
-            <button
-                aria-label="Line"
-                className={`p-2 bg-gray-200 hover:bg-gray-300 text-black rounded border ${selectedTool === "line" ? "ring-2 ring-blue-500 text-white" : "border-transparent"}`}
-                onClick={() => onSelectTool("line")}
-            >
-                <Minus size={18} />
-            </button>
-            <button
-                aria-label="Text"
-                className={`p-2 bg-gray-200 hover:bg-gray-300 text-black rounded border ${selectedTool === "text" ? "ring-2 ring-blue-500 text-white" : "border-transparent"}`}
-                onClick={() => onSelectTool("text")}
-            >
-                <Type size={18} />
-            </button>
-            <button
-                aria-label="Note"
-                className={`p-2 bg-gray-200 hover:bg-gray-300 text-black rounded border ${selectedTool === "note" ? "ring-2 ring-blue-500 text-white" : "border-transparent"}`}
-                onClick={() => onSelectTool("note")}
-            >
-                <StickyNote size={18} />
-            </button>
-            <button
-                aria-label="Eraser"
-                className={`p-2 bg-gray-200 hover:bg-gray-300 text-black rounded border ${selectedTool === "eraser" ? "ring-2 ring-blue-500 text-white" : "border-transparent"}`}
-                onClick={() => onSelectTool("eraser")}
-            >
-                <Eraser size={18} />
-            </button>
+            {tools.map(({ tool, label, description, icon }) => (
+                <ToolButton
+                    key={tool}
+                    label={label}
+                    description={description}
+                    active={selectedTool === tool}
+                    onClick={() => onSelectTool(tool)}
+                >
+                    {icon}
+                </ToolButton>
+            ))}
             <div className="mx-1 h-10 w-px bg-gray-300" />
             {colours.map((colour) => (
                 <button
@@ -101,22 +106,12 @@ export default function Toolbar({ selectedTool, onSelectTool, selectedColour, on
                 />
             ))}
             <div className="mx-1 h-10 w-px bg-gray-300" />
-            <button
-                aria-label="Undo"
-                className="p-2 bg-gray-200 hover:bg-gray-300 text-black rounded border border-transparent disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-gray-200"
-                onClick={onUndo}
-                disabled={!canUndo}
-            >
+            <ToolButton label="Undo" description="Undo (Ctrl+Z)" align="right" disabled={!canUndo} onClick={onUndo}>
                 <Undo2 size={18} />
-            </button>
-            <button
-                aria-label="Redo"
-                className="p-2 bg-gray-200 hover:bg-gray-300 text-black rounded border border-transparent disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-gray-200"
-                onClick={onRedo}
-                disabled={!canRedo}
-            >
+            </ToolButton>
+            <ToolButton label="Redo" description="Redo (Ctrl+Y)" align="right" disabled={!canRedo} onClick={onRedo}>
                 <Redo2 size={18} />
-            </button>
+            </ToolButton>
         </div>
     )
 }

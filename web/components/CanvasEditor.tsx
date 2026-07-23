@@ -244,8 +244,28 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
 
     function pasteClipboard() {
         if (!clipboard.current) return;
-        const { shapes: clippedShapes, notes: clippedNotes, texts: clippedTexts } = clipboard.current;
-        const PASTE_OFFSET = 20; // Keep pasted items visible beside the originals.
+        placeCopies(clipboard.current, 20);
+    }
+
+    // Duplicate the current selection in place (Ctrl+D). Sources from the live
+    // selection rather than the clipboard, so it works without a prior copy.
+    function duplicateSelection() {
+        const selectedShapes = shapes.filter((s) => selectedIds.has(s.id));
+        const selectedNotes = notes.filter((n) => selectedIds.has(n.id));
+        const selectedTexts = texts.filter((t) => selectedIds.has(t.id));
+        if (selectedShapes.length + selectedNotes.length + selectedTexts.length === 0) return;
+        placeCopies({ shapes: selectedShapes, notes: selectedNotes, texts: selectedTexts }, 20);
+    }
+
+    // Clone a set of items with a positional offset, add them, broadcast the
+    // adds, record one undo step, and select the new copies. Shared by paste
+    // and duplicate.
+    function placeCopies(
+        source: { shapes: Shape[]; notes: Note[]; texts: TextBox[] },
+        offset: number
+    ) {
+        const { shapes: clippedShapes, notes: clippedNotes, texts: clippedTexts } = source;
+        const PASTE_OFFSET = offset; // Keep new items visible beside the originals.
 
         const doMessages: CanvasMessage[] = [];
         const undoMessages: CanvasMessage[] = [];
@@ -515,6 +535,10 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
             } else if (e.ctrlKey && e.key === "c") {
                 e.preventDefault();
                 copySelection();
+            } else if (e.ctrlKey && (e.key === "d" || e.key === "D")) {
+                // Ctrl+D is "bookmark page" in browsers; preventDefault stops that.
+                e.preventDefault();
+                duplicateSelection();
             } else if (e.key === "Delete" || e.key === "Backspace") {
                 e.preventDefault();
                 deleteSelection();
@@ -538,7 +562,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
         return () => {
             window.removeEventListener("keydown", handleKeyDown);
         };
-    }, [undo, redo, pasteClipboard, copySelection, deleteSelection, bringSelectionToFront, sendSelectionToBack, bringSelectionForward, sendSelectionBackward]);
+    }, [undo, redo, pasteClipboard, copySelection, duplicateSelection, deleteSelection, bringSelectionToFront, sendSelectionToBack, bringSelectionForward, sendSelectionBackward]);
 
     useEffect(() => {
         shapesRef.current = shapes;
