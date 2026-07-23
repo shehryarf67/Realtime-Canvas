@@ -193,6 +193,9 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
     const [selectedIds, setSelectedIds] = useState<Set<string | number>>(new Set());
     // Only the active note or text box accepts typing. Other clicks select items.
     const [editingId, setEditingId] = useState<string | number | null>(null);
+    // The textarea currently being edited, so we can collapse its selection
+    // when editing ends regardless of which exit path was taken.
+    const editingElRef = useRef<HTMLTextAreaElement | null>(null);
     const marqueeStart = useRef<Point | null>(null);
     const [marqueeRect, setMarqueeRect] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
     const { socket, isConnected } = useSocket();
@@ -542,12 +545,37 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
     }, [shapes]);
 
     // The textarea only exists after render, so focus it from this effect.
+    // The double-click that opens edit mode lands on the wrapper div while the
+    // textarea is still readOnly/pointer-events-none, so the browser's native
+    // double-click selection never reaches it. Select all the existing text on
+    // entry so a double-click behaves like the user expects: text highlighted
+    // and ready to replace.
     useEffect(() => {
-        if (editingId == null) return;
+        if (editingId == null) {
+            // Editing just ended (blur, canvas click, Escape, etc.). Collapse
+            // the selection on the textarea we were editing — a read-only
+            // textarea keeps painting its last selection as a grey highlight
+            // otherwise — and clear any document-level selection too.
+            const prev = editingElRef.current;
+            if (prev) {
+                prev.setSelectionRange(0, 0);
+                editingElRef.current = null;
+            }
+            window.getSelection()?.removeAllRanges();
+            return;
+        }
         const el = canvasRef.current?.querySelector(
             `textarea[data-item-id="${editingId}"]`
         ) as HTMLTextAreaElement | null;
-        el?.focus();
+        if (!el) return;
+        editingElRef.current = el;
+        el.focus();
+        // Defer the select to the next frame: the browser applies its own
+        // native double-click "select word" default *after* our React handlers
+        // run, which would clobber a synchronous select(). Selecting next frame
+        // lets our full-text selection win.
+        const raf = requestAnimationFrame(() => el.select());
+        return () => cancelAnimationFrame(raf);
     }, [editingId]);
 
     // Canvas drags can trigger browser text selection inside textareas. Block
@@ -1483,7 +1511,12 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
                     // Selecting text should not drag the note.
                     if (editing) e.stopPropagation();
                 }}
-                onBlur={() => setEditingId((cur) => (cur === note.id ? null : cur))}
+                onBlur={(e) => {
+                    // Collapse the highlight so it doesn't stay painted after
+                    // focus leaves the (now read-only) textarea.
+                    e.currentTarget.setSelectionRange(0, 0);
+                    setEditingId((cur) => (cur === note.id ? null : cur));
+                }}
                 onChange={(e) => {
                     const value = e.target.value;
                     const updated = { ...note, text: value };
@@ -1522,7 +1555,12 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
                     }
                     if (editing) e.stopPropagation();
                 }}
-                onBlur={() => setEditingId((cur) => (cur === textBox.id ? null : cur))}
+                onBlur={(e) => {
+                    // Collapse the highlight so it doesn't stay painted after
+                    // focus leaves the (now read-only) textarea.
+                    e.currentTarget.setSelectionRange(0, 0);
+                    setEditingId((cur) => (cur === textBox.id ? null : cur));
+                }}
                 onChange={(e) => {
                     const value = e.target.value;
                     const updated = { ...textBox, text: value };
@@ -1666,13 +1704,16 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
                 position={{ x: note.x, y: note.y }}
                 bounds="parent"
                 scale={effectiveScale}
-                enableResizing={!note.rotation}
-                disableDragging={isGroupDragEligible(note.id)}
+                enableResizing={!note.rotation && editingId !== note.id}
+                disableDragging={editingId === note.id || isGroupDragEligible(note.id)}
                 onPointerDown={(e: React.PointerEvent<HTMLElement>) => {
                     if (selectedTool === "eraser") {
                         e.stopPropagation();
                         deleteNote(note.id);
                     } else if (selectedTool === "select") {
+                        // While editing this note, leave pointer events to the
+                        // textarea (text selection) — no select/drag handling.
+                        if (editingId === note.id) return;
                         e.stopPropagation();
                         handleShapeSelect(e, note.id);
                         startGroupDrag(e, note.id);
@@ -1717,13 +1758,16 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
                 position={{ x: textBox.x, y: textBox.y }}
                 bounds="parent"
                 scale={effectiveScale}
-                enableResizing={!textBox.rotation}
-                disableDragging={isGroupDragEligible(textBox.id)}
+                enableResizing={!textBox.rotation && editingId !== textBox.id}
+                disableDragging={editingId === textBox.id || isGroupDragEligible(textBox.id)}
                 onPointerDown={(e: React.PointerEvent<HTMLElement>) => {
                     if (selectedTool === "eraser") {
                         e.stopPropagation();
                         deleteText(textBox.id);
                     } else if (selectedTool === "select") {
+                        // While editing this text box, leave pointer events to
+                        // the textarea (text selection) — no select/drag handling.
+                        if (editingId === textBox.id) return;
                         e.stopPropagation();
                         handleShapeSelect(e, textBox.id);
                         startGroupDrag(e, textBox.id);
