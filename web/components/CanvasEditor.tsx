@@ -142,6 +142,14 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
     // effectiveScale combines responsive fit and manual zoom.
     const [userZoom, setUserZoom] = useState(1);
     const effectiveScale = scale * userZoom;
+    // Items only respond to the pointer for the select tool (drag/select) and
+    // the eraser (click to delete). For every drawing/placing tool they must be
+    // click-through, so a new stroke can begin on top of an existing item
+    // instead of grabbing/dragging it. This drives both the react-rnd items
+    // (via pointerEvents) and the SVG shapes (via the hit-area class below).
+    const itemsClickThrough =
+        selectedTool != null && selectedTool !== "select" && selectedTool !== "eraser";
+    const shapeHitClass = itemsClickThrough ? "" : "pointer-events-auto";
     const drawingId = useRef<string | null>(null);
     const startPoint = useRef<{ x: number; y: number } | null>(null);
     const lineDrag = useRef<{
@@ -1399,7 +1407,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
                 width={bounds.maxX - bounds.minX + SELECTION_PADDING * 2}
                 height={bounds.maxY - bounds.minY + SELECTION_PADDING * 2}
                 fill="transparent"
-                className="pointer-events-auto"
+                className={shapeHitClass}
                 style={getObjectCursorStyle()}
                 onPointerDown={onPointerDown}
             />
@@ -1425,7 +1433,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
                         stroke="black"
                         strokeWidth="2"
                         vectorEffect="non-scaling-stroke"
-                        className="pointer-events-auto"
+                        className={shapeHitClass}
                         style={getObjectCursorStyle()}
                         onPointerDown={(e) => handleTrianglePointerDown(e, shape)}
                     />
@@ -1440,7 +1448,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
                                 fill="white"
                                 stroke="black"
                                 strokeWidth="2"
-                                className="pointer-events-auto"
+                                className={shapeHitClass}
                                 style={getObjectCursorStyle()}
                                 onPointerDown={(e) => handleTriangleVertexPointerDown(e, shape, "p1")}
                             />
@@ -1451,7 +1459,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
                                 fill="white"
                                 stroke="black"
                                 strokeWidth="2"
-                                className="pointer-events-auto"
+                                className={shapeHitClass}
                                 style={getObjectCursorStyle()}
                                 onPointerDown={(e) => handleTriangleVertexPointerDown(e, shape, "p2")}
                             />
@@ -1462,7 +1470,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
                                 fill="white"
                                 stroke="black"
                                 strokeWidth="2"
-                                className="pointer-events-auto"
+                                className={shapeHitClass}
                                 style={getObjectCursorStyle()}
                                 onPointerDown={(e) => handleTriangleVertexPointerDown(e, shape, "p3")}
                             />
@@ -1485,7 +1493,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
                     stroke={shape.colour}
                     strokeWidth="2"
                     vectorEffect="non-scaling-stroke"
-                    className="pointer-events-auto"
+                    className={shapeHitClass}
                     style={getObjectCursorStyle()}
                     onPointerDown={(e) => handleLinePointerDown(e, shape)}
                 />
@@ -1600,7 +1608,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
                         strokeWidth="14"
                         strokeLinecap="round"
                         strokeLinejoin="round"
-                        className="pointer-events-auto"
+                        className={shapeHitClass}
                         style={getObjectCursorStyle()}
                         onPointerDown={(e) => handlePenPointerDown(e, shape)}
                     />
@@ -1643,6 +1651,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
                 position={{ x: shape.x, y: shape.y }}
                 bounds="parent"
                 scale={effectiveScale}
+                style={{ pointerEvents: itemsClickThrough ? "none" : undefined }}
                 disableDragging={isDrawing || isGroupDragEligible(shape.id)}
                 enableResizing={!isDrawing && !shape.rotation}
                 onPointerDown={(e: React.PointerEvent<HTMLElement>) => {
@@ -1704,6 +1713,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
                 position={{ x: note.x, y: note.y }}
                 bounds="parent"
                 scale={effectiveScale}
+                style={{ pointerEvents: itemsClickThrough ? "none" : undefined }}
                 enableResizing={!note.rotation && editingId !== note.id}
                 disableDragging={editingId === note.id || isGroupDragEligible(note.id)}
                 onPointerDown={(e: React.PointerEvent<HTMLElement>) => {
@@ -1757,6 +1767,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
                 position={{ x: textBox.x, y: textBox.y }}
                 bounds="parent"
                 scale={effectiveScale}
+                style={{ pointerEvents: itemsClickThrough ? "none" : undefined }}
                 enableResizing={!textBox.rotation && editingId !== textBox.id}
                 disableDragging={editingId === textBox.id || isGroupDragEligible(textBox.id)}
                 onPointerDown={(e: React.PointerEvent<HTMLElement>) => {
@@ -1869,7 +1880,10 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
                 })}
                 {(() => {
                     const rotatable = getRotatableSelected();
-                    if (!rotatable) return null;
+                    // Hide the rotate handle while a drawing/placing tool is
+                    // active so it can't intercept a stroke started on top of a
+                    // still-selected item.
+                    if (!rotatable || itemsClickThrough) return null;
                     const { kind, id, center, halfHeight, rotation, original } = rotatable;
                     const cx = center.x;
                     const cy = center.y;
