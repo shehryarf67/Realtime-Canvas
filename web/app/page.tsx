@@ -16,6 +16,7 @@ export default function Home() {
   const [joining, setJoining] = useState(false);
   const [joinHint, setJoinHint] = useState(false);
   const [joinError, setJoinError] = useState<string | null>(null);
+  const [createError, setCreateError] = useState<string | null>(null);
   const [boards, setBoards] = useState<Board[]>([]);
 
   useEffect(() => {
@@ -41,6 +42,7 @@ export default function Home() {
   async function handleCreate() {
     if (creating) return;
     setCreating(true);
+    setCreateError(null);
     try {
       const roomCode = generateRoomCode();
       const now = Date.now();
@@ -54,6 +56,7 @@ export default function Home() {
       router.push(`/room/${roomCode}`);
     } catch {
       // Let the user retry if board creation fails.
+      setCreateError("Couldn't create a board. Please refresh and sign in again, then retry.");
       setCreating(false);
     }
   }
@@ -330,6 +333,9 @@ export default function Home() {
                   {joinHint && !canJoin ? "Enter a board code to join." : joinError ?? ""}
                 </p>
               </form>
+              {createError && (
+                <p role="alert" className="mt-4 basis-full text-sm text-red-600">{createError}</p>
+              )}
             </div>
           ) : (
             <div className="mt-10 flex items-center gap-4">

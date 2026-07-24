@@ -26,12 +26,15 @@ function toBoard(serverBoard: ServerBoard): Board {
 }
 
 export async function addBoard(board: Board): Promise<void> {
-  await fetch(`${process.env.NEXT_PUBLIC_SERVER_URL}/boards`, {
+  const res = await fetch(`${process.env.NEXT_PUBLIC_SERVER_URL}/boards`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "include",
     body: JSON.stringify({ roomId: board.id, name: board.name }),
   });
+  // Surface failures (e.g. not signed in, rate limited) instead of silently
+  // navigating into a room that was never created.
+  if (!res.ok) throw new Error(`Failed to create board (${res.status})`);
 }
 
 export async function joinBoard(roomId: string): Promise<Board | null> {

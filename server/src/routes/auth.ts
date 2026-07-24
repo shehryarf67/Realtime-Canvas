@@ -16,7 +16,9 @@ const router = Router();
 const SALT_ROUNDS = 10;
 // Three hours leaves room for delayed delivery from a new sending domain.
 const RESET_TOKEN_TTL_MS = 3 * 60 * 60 * 1000;
-const AUTH_COOKIE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+const AUTH_COOKIE_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000; // 14 days
+// Keep the JWT lifetime in lockstep with the cookie so neither expires first.
+const AUTH_TOKEN_TTL = "14d";
 const MAX_DISPLAY_NAME_LENGTH = 80;
 
 // I rate limit credential routes to slow password guessing and email spam.
@@ -91,7 +93,7 @@ function setAuthCookie(
       tokenVersion: user.tokenVersion ?? 0,
     },
     JWT_SECRET,
-    { expiresIn: "7d" }
+    { expiresIn: AUTH_TOKEN_TTL }
   );
   res.cookie(AUTH_COOKIE_NAME, token, {
     ...AUTH_COOKIE_OPTIONS,

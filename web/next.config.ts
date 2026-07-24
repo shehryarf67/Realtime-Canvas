@@ -16,6 +16,12 @@ const securityHeaders = [
   { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
 ];
 
+// When set (production/Vercel), the API is proxied under this origin's /api/*
+// path so the auth cookie is first-party — third-party cookies are blocked by
+// Safari and being phased out by Chrome. Local dev leaves this unset and talks
+// to the API directly.
+const apiProxyTarget = process.env.API_PROXY_TARGET;
+
 const nextConfig: NextConfig = {
   turbopack: {
     root: path.resolve(__dirname, ".."),
@@ -27,6 +33,12 @@ const nextConfig: NextConfig = {
         headers: securityHeaders,
       },
     ];
+  },
+  async rewrites() {
+    if (!apiProxyTarget) return [];
+    const target = apiProxyTarget.replace(/\/$/, "");
+    // Covers REST (/api/auth, /api/boards, …) and Socket.IO (/api/socket.io/*).
+    return [{ source: "/api/:path*", destination: `${target}/:path*` }];
   },
 };
 

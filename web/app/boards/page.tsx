@@ -18,6 +18,7 @@ export default function Boards() {
   const [boards, setBoards] = useState<Board[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<Board | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [renamingId, setRenamingId] = useState<string | null>(null);
@@ -40,6 +41,7 @@ export default function Boards() {
   async function handleCreate() {
     if (creating) return;
     setCreating(true);
+    setCreateError(null);
     try {
       const roomCode = generateRoomCode();
       const now = Date.now();
@@ -51,6 +53,7 @@ export default function Boards() {
       });
       router.push(`/room/${roomCode}`);
     } catch {
+      setCreateError("Couldn't create a board. Please refresh and sign in again, then retry.");
       setCreating(false);
     }
   }
@@ -130,6 +133,10 @@ export default function Boards() {
             {creating ? "Creating…" : "+ New board"}
           </button>
         </div>
+
+        {createError && (
+          <p role="alert" className="mt-4 text-sm text-red-600">{createError}</p>
+        )}
 
         <p className="mt-12 font-mono text-sm font-normal tracking-wide text-neutral-600">
           Your boards
