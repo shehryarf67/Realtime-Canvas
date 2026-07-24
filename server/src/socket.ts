@@ -77,7 +77,12 @@ export function initSocketServer(httpServer: HTTPServer): Server {
   ioInstance = io;
 
   io.use(async (socket, next) => {
-    const token = readCookie(socket.handshake.headers.cookie, AUTH_COOKIE_NAME);
+    // Prefer an explicit handshake token (production: the socket connects
+    // cross-origin over WebSocket, so the auth cookie isn't sent). Fall back to
+    // the cookie for same-origin/local connections.
+    const handshakeToken =
+      typeof socket.handshake.auth?.token === "string" ? socket.handshake.auth.token : undefined;
+    const token = handshakeToken || readCookie(socket.handshake.headers.cookie, AUTH_COOKIE_NAME);
     if (!token) {
       next(new Error("Authentication required"));
       return;

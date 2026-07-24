@@ -21,22 +21,33 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     if (!user) return;
 
     // NEXT_PUBLIC_SERVER_URL is an absolute URL in local dev (talk to the API
-    // directly) or a relative base like "/api" in production (same-origin proxy
-    // so the auth cookie is first-party). The server reads identity from that
-    // cookie on the handshake, so credentials must be sent either way.
+    // directly, same-site cookie works) or a relative base like "/api" in
+    // production (REST is same-origin-proxied so the cookie is first-party).
     const serverUrl = process.env.NEXT_PUBLIC_SERVER_URL ?? "";
     const usingProxy = !/^https?:\/\//i.test(serverUrl);
-    const sock = usingProxy
-      ? io({
-          withCredentials: true,
-          // Route the Socket.IO endpoint through the same /api proxy.
-          path: `${serverUrl.replace(/\/$/, "")}/socket.io`,
-          // Vercel proxies HTTP but not WebSocket upgrades to an external
-          // origin, so pin to long-polling (still near-realtime) to avoid
-          // repeated failed-upgrade churn.
-          transports: ["polling"],
-        })
-      : io(serverUrl, { withCredentials: true });
+
+    let sock: Socket;
+    if (usingProxy) {
+      // Production: connect the socket straight to the API over WebSocket
+      // (Vercel can't proxy WS upgrades). The cross-origin auth cookie isn't
+      // available there, so authenticate with a short-lived token fetched via
+      // the first-party /api proxy. `auth` is a function, so a fresh token is
+      // pulled on every (re)connect.
+      const apiBase = serverUrl.replace(/\/$/, "");
+      const socketTarget = process.env.NEXT_PUBLIC_SOCKET_URL || "";
+      sock = io(socketTarget, {
+        transports: ["websocket"],
+        auth: (cb) => {
+          fetch(`${apiBase}/auth/socket-token`, { credentials: "include" })
+            .then((res) => (res.ok ? res.json() : null))
+            .then((data) => cb({ token: data?.token }))
+            .catch(() => cb({}));
+        },
+      });
+    } else {
+      // Local dev: same-site cookie is sent on the handshake.
+      sock = io(serverUrl, { withCredentials: true });
+    }
 
     sock.on("connect", () => setIsConnected(true));
     sock.on("disconnect", () => setIsConnected(false));

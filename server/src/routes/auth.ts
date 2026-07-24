@@ -186,6 +186,34 @@ router.get("/me", async (req, res) => {
   res.status(200).json({ userId: decoded.userId, name: decoded.name, email: decoded.email });
 });
 
+// Mint a short-lived token the browser can hand to the Socket.IO handshake.
+// In production the socket connects cross-origin (WebSocket, straight to this
+// API) where the auth cookie isn't sent, so it authenticates with this token
+// instead. Kept short (5 min) to limit exposure; the client fetches a fresh
+// one on every (re)connect. This route is reached first-party via the /api
+// proxy, so the cookie IS available here.
+router.get("/socket-token", requireAuth, async (req, res) => {
+  const email = req.userEmail;
+  if (!email) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+  const user = await users().findOne({ email });
+  if (!user) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+  const token = jwt.sign(
+    {
+      userId: String(user._id),
+      name: user.name,
+      email: user.email,
+      tokenVersion: user.tokenVersion ?? 0,
+    },
+    JWT_SECRET,
+    { expiresIn: "5m" }
+  );
+  res.status(200).json({ token });
+});
+
 router.post("/logout", (_req, res) => {
   // Clearing needs the same flags used when the cookie was created.
   res.clearCookie(AUTH_COOKIE_NAME, AUTH_COOKIE_OPTIONS);
