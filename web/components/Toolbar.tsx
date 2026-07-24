@@ -61,8 +61,9 @@ function ToolButton({
             <button
                 type="button"
                 aria-label={label}
+                aria-pressed={active ?? undefined}
                 disabled={disabled}
-                className={`peer p-2 bg-gray-200 hover:bg-gray-300 text-black rounded border disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-gray-200 ${active ? "ring-2 ring-blue-500 text-white" : "border-transparent"}`}
+                className={`peer p-2 bg-gray-200 hover:bg-gray-300 text-black rounded border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-gray-200 ${active ? "ring-2 ring-blue-500 text-white" : "border-transparent"}`}
                 onClick={onClick}
             >
                 {children}
@@ -97,7 +98,8 @@ export default function Toolbar({ selectedTool, onSelectTool, selectedColour, on
                 <button
                     key={colour}
                     aria-label={`Colour ${colour}`}
-                    className={`h-10 w-10 rounded-full border hover:ring-2 hover:ring-blue-500 ${selectedColour === colour ? "ring-2 ring-blue-500" : "border-gray-300"}`}
+                    aria-pressed={selectedColour === colour}
+                    className={`h-10 w-10 rounded-full border hover:ring-2 hover:ring-blue-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${selectedColour === colour ? "ring-2 ring-blue-500" : "border-gray-300"}`}
                     style={{ backgroundColor: colour }}
                     onClick={() => onSelectedColourChange(colour)}
                 />

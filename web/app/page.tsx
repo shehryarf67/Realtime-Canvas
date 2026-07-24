@@ -319,7 +319,7 @@ export default function Home() {
                     disabled={!canJoin || joining}
                     className="shrink-0 border-l border-neutral-300 px-4 text-sm font-medium text-neutral-700 transition-colors hover:text-neutral-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-900 disabled:cursor-not-allowed disabled:text-neutral-300 motion-reduce:transition-none"
                   >
-                    {joining ? "Joiningâ€¦" : "Join"}
+                    {joining ? "Joining…" : "Join"}
                   </button>
                 </div>
                 <p

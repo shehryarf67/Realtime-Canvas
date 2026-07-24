@@ -175,7 +175,7 @@ function AccountSettings({
                 <span className="mt-1.5 block text-xs font-normal text-neutral-500">Your sign-in email cannot be changed here.</span>
               </label>
               <div className="flex flex-wrap items-center gap-4">
-                <button disabled={savingProfile || !name.trim()} className="bg-neutral-900 px-4 py-2.5 text-sm font-medium text-white hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-60">
+                <button disabled={savingProfile || !name.trim()} className="bg-neutral-900 px-4 py-2.5 text-sm font-medium text-white hover:bg-neutral-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-900 disabled:cursor-not-allowed disabled:opacity-60">
                   {savingProfile ? "Saving..." : "Save profile"}
                 </button>
                 <p aria-live="polite" className="text-sm text-neutral-600">{profileStatus}</p>
@@ -191,7 +191,7 @@ function AccountSettings({
               <label className="block text-sm font-medium" htmlFor="new-password">New password<input id="new-password" type="password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} minLength={8} autoComplete="new-password" className={inputClass} /></label>
               <label className="block text-sm font-medium" htmlFor="confirm-password">Confirm new password<input id="confirm-password" type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} minLength={8} autoComplete="new-password" className={inputClass} /></label>
               <div className="flex flex-wrap items-center gap-4">
-                <button disabled={changingPassword || !currentPassword || !newPassword || !confirmPassword} className="bg-neutral-900 px-4 py-2.5 text-sm font-medium text-white hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-60">{changingPassword ? "Changing..." : "Change password"}</button>
+                <button disabled={changingPassword || !currentPassword || !newPassword || !confirmPassword} className="bg-neutral-900 px-4 py-2.5 text-sm font-medium text-white hover:bg-neutral-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-900 disabled:cursor-not-allowed disabled:opacity-60">{changingPassword ? "Changing..." : "Change password"}</button>
                 <p aria-live="polite" className="text-sm text-neutral-600">{passwordStatus}</p>
               </div>
             </form>
@@ -201,15 +201,15 @@ function AccountSettings({
             <h2 className="text-lg font-medium text-red-700">Delete account</h2>
             <p className="mt-2 text-sm leading-6 text-neutral-600">This permanently deletes your account, every board you own, and everything drawn on those boards. It cannot be undone.</p>
             {!showDelete ? (
-              <button type="button" onClick={() => setShowDelete(true)} className="mt-5 border border-red-600 px-4 py-2.5 text-sm font-medium text-red-700 hover:bg-red-50">Start account deletion</button>
+              <button type="button" onClick={() => setShowDelete(true)} className="mt-5 border border-red-600 px-4 py-2.5 text-sm font-medium text-red-700 hover:bg-red-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-600">Start account deletion</button>
             ) : (
               <form onSubmit={handleDelete} className="mt-6 space-y-5 border-t border-red-100 pt-6">
                 <label className="block text-sm font-medium" htmlFor="delete-password">Password<input id="delete-password" type="password" value={deletePassword} onChange={(event) => setDeletePassword(event.target.value)} autoComplete="current-password" className={inputClass} /></label>
                 <label className="block text-sm font-medium" htmlFor="delete-confirmation">Type DELETE to confirm<input id="delete-confirmation" value={deleteConfirmation} onChange={(event) => setDeleteConfirmation(event.target.value)} autoComplete="off" spellCheck={false} className={inputClass} /></label>
                 {deleteError && <p role="alert" className="text-sm text-red-600">{deleteError}</p>}
                 <div className="flex gap-3">
-                  <button type="button" disabled={deleting} onClick={() => { setShowDelete(false); setDeletePassword(""); setDeleteConfirmation(""); setDeleteError(null); }} className="px-4 py-2.5 text-sm font-medium text-neutral-600 hover:text-neutral-900 disabled:opacity-60">Cancel</button>
-                  <button disabled={deleting || !deletePassword || deleteConfirmation !== "DELETE"} className="bg-red-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60">{deleting ? "Deleting..." : "Delete my account"}</button>
+                  <button type="button" disabled={deleting} onClick={() => { setShowDelete(false); setDeletePassword(""); setDeleteConfirmation(""); setDeleteError(null); }} className="px-4 py-2.5 text-sm font-medium text-neutral-600 hover:text-neutral-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-400 disabled:opacity-60">Cancel</button>
+                  <button disabled={deleting || !deletePassword || deleteConfirmation !== "DELETE"} className="bg-red-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-red-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-600 disabled:cursor-not-allowed disabled:opacity-60">{deleting ? "Deleting..." : "Delete my account"}</button>
                 </div>
               </form>
             )}

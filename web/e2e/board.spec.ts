@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { signUp, createBoard } from "./helpers";
+import { signUp, createBoard, drawSquare } from "./helpers";
 
 test.describe("boards", () => {
   test("creates a new board and opens the room editor", async ({ page }) => {
@@ -97,6 +97,85 @@ test.describe("boards", () => {
       page.getByRole("menuitem", { name: "Download PNG" }).click(),
     ]);
     expect(png.suggestedFilename()).toMatch(/\.png$/);
+  });
+
+  test("Ctrl+Shift+Z redoes an undone shape", async ({ page }) => {
+    await signUp(page);
+    await createBoard(page);
+    await expect(page.getByTestId("disconnected-overlay")).toHaveCount(0);
+
+    await drawSquare(page);
+    const square = page.locator("div.border-2.border-black");
+    await expect(square).toHaveCount(1);
+
+    await page.keyboard.press("Control+z");
+    await expect(square).toHaveCount(0);
+
+    // Ctrl+Shift+Z (not just Ctrl+Y) should redo.
+    await page.keyboard.press("Control+Shift+z");
+    await expect(square).toHaveCount(1);
+  });
+
+  test("Ctrl+A selects everything and Delete clears the board", async ({ page }) => {
+    await signUp(page);
+    await createBoard(page);
+    await expect(page.getByTestId("disconnected-overlay")).toHaveCount(0);
+
+    await drawSquare(page, { x: 100, y: 100 }, { x: 240, y: 220 });
+    await drawSquare(page, { x: 320, y: 120 }, { x: 460, y: 260 });
+    const squares = page.locator("div.border-2.border-black");
+    await expect(squares).toHaveCount(2);
+
+    await page.keyboard.press("Control+a");
+    await page.keyboard.press("Delete");
+    await expect(squares).toHaveCount(0);
+  });
+
+  test("Ctrl+D duplicates the selected shape", async ({ page }) => {
+    await signUp(page);
+    await createBoard(page);
+    await expect(page.getByTestId("disconnected-overlay")).toHaveCount(0);
+
+    await drawSquare(page);
+    const square = page.locator("div.border-2.border-black");
+    await expect(square).toHaveCount(1);
+
+    // Select it, then duplicate.
+    await page.getByRole("button", { name: "Select" }).click();
+    await square.first().click();
+    await page.keyboard.press("Control+d");
+    await expect(square).toHaveCount(2);
+  });
+
+  test("arrow keys nudge the selected shape", async ({ page }) => {
+    await signUp(page);
+    await createBoard(page);
+    await expect(page.getByTestId("disconnected-overlay")).toHaveCount(0);
+
+    await drawSquare(page);
+    const square = page.locator("div.border-2.border-black");
+    await page.getByRole("button", { name: "Select" }).click();
+    await square.click();
+
+    const before = await square.boundingBox();
+    if (!before) throw new Error("square has no bounding box");
+    for (let i = 0; i < 10; i++) await page.keyboard.press("Shift+ArrowRight");
+    const after = await square.boundingBox();
+    if (!after) throw new Error("square has no bounding box");
+
+    expect(after.x).toBeGreaterThan(before.x);
+  });
+
+  test("Copy button puts an invite link on the clipboard", async ({ page, context }) => {
+    await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+    await signUp(page);
+    const code = await createBoard(page);
+
+    await page.getByRole("button", { name: "Copy invite link" }).click();
+    await expect(page.getByText("Copied!")).toBeVisible();
+
+    const clip = await page.evaluate(() => navigator.clipboard.readText());
+    expect(clip).toContain(`/room/${code}`);
   });
 
   test("zoom controls change the zoom level and reset", async ({ page }) => {

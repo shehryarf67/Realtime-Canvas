@@ -41,3 +41,20 @@ export async function createBoard(page: Page): Promise<string> {
   const url = new URL(page.url());
   return decodeURIComponent(url.pathname.replace("/room/", ""));
 }
+
+// Draw one square by dragging with the Square tool. Offsets are relative to the
+// canvas top-left, in screen px. The drag is large enough to clear the
+// accidental-click minimum-size guard.
+export async function drawSquare(
+  page: Page,
+  from: { x: number; y: number } = { x: 120, y: 120 },
+  to: { x: number; y: number } = { x: 280, y: 260 }
+): Promise<void> {
+  await page.getByRole("button", { name: "Square" }).click();
+  const box = await page.getByTestId("canvas").boundingBox();
+  if (!box) throw new Error("canvas has no bounding box");
+  await page.mouse.move(box.x + from.x, box.y + from.y);
+  await page.mouse.down();
+  await page.mouse.move(box.x + to.x, box.y + to.y, { steps: 8 });
+  await page.mouse.up();
+}

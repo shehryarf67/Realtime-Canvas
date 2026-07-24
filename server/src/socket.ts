@@ -205,6 +205,15 @@ export function initSocketServer(httpServer: HTTPServer): Server {
       socket.to(roomId).emit("cursor-move", { userId: socket.data.userId, x, y, name: socket.data.name });
     })
 
+    // The pointer left a peer's canvas — tell the room to drop its stale cursor
+    // (without waiting for a full disconnect).
+    socket.on("cursor-leave", ({ roomId }: { roomId: string }) => {
+      const authorizedRooms = socket.data.authorizedRooms as Set<string> | undefined;
+      if (!authorizedRooms?.has(roomId)) return;
+
+      socket.to(roomId).emit("cursor-leave", { userId: socket.data.userId });
+    })
+
     socket.on("disconnect", () => {
       logger.info("client disconnected", { socketId: socket.id });
       const userId = socket.data.userId as string;

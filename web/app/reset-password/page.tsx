@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import AuthScaffold, { PasswordField } from "@/components/AuthScaffold";
 import { isValidPassword, MIN_PASSWORD_LENGTH } from "@/lib/validation";
+import { safeJson } from "@/lib/http";
 
 function ResetPasswordForm() {
   const router = useRouter();
@@ -45,11 +46,11 @@ function ResetPasswordForm() {
       return;
     }
 
-    const data = await res.json();
+    const data = await safeJson(res);
     setIsLoading(false);
 
-    if (!res.ok) {
-      setError(data.error);
+    if (!res.ok || !data) {
+      setError(data?.error ?? "Something went wrong. Please try again.");
       return;
     }
 

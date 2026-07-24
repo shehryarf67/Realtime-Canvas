@@ -4,6 +4,7 @@ import { useState, type SyntheticEvent } from "react";
 import Link from "next/link";
 import AuthScaffold, { AuthField } from "@/components/AuthScaffold";
 import { isValidEmail } from "@/lib/validation";
+import { safeJson } from "@/lib/http";
 
 export default function ForgotPassword() {
   const [email, setEmail] = useState("");
@@ -37,11 +38,11 @@ export default function ForgotPassword() {
       return;
     }
 
-    const data = await res.json();
+    const data = await safeJson(res);
     setIsLoading(false);
 
-    if (!res.ok) {
-      setError(data.error);
+    if (!res.ok || !data) {
+      setError(data?.error ?? "Something went wrong. Please try again.");
       return;
     }
 

@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import AuthScaffold, { AuthField, PasswordField } from "@/components/AuthScaffold";
 import { useAuth } from "@/contexts/AuthContext";
 import { isValidEmail, isValidPassword, MIN_PASSWORD_LENGTH } from "@/lib/validation";
+import { safeJson } from "@/lib/http";
 
 export default function Signup() {
   const [name, setName] = useState("");
@@ -49,10 +50,10 @@ export default function Signup() {
       return;
     }
 
-    const data = await res.json();
+    const data = await safeJson(res);
 
-    if (!res.ok) {
-      setError(data.error);
+    if (!res.ok || !data) {
+      setError(data?.error ?? "Something went wrong. Please try again.");
       setIsLoading(false);
       return;
     }

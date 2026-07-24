@@ -116,6 +116,10 @@ const ZOOM_MIN = 1;
 const ZOOM_MAX = 4;
 const ZOOM_STEP = 0.25;
 
+// A freshly drawn shape smaller than this (in logical px, both dimensions) is
+// treated as an accidental click and discarded instead of committed.
+const DRAW_MIN_SIZE = 3;
+
 const TEXT_COLOUR = "#000000";
 const NOTE_COLOUR = "#fff9b1";
 
@@ -196,6 +200,10 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
     const [editingId, setEditingId] = useState<string | number | null>(null);
     // Keep the active textarea so its highlight can be cleared on every exit path.
     const editingElRef = useRef<HTMLTextAreaElement | null>(null);
+    // Note ids are numeric (Note.id). Date.now() alone collides when two notes
+    // are made in the same millisecond (rapid create/duplicate/paste), which
+    // breaks selection and per-item updates. Hand out strictly increasing ids.
+    const lastNoteId = useRef(0);
     const marqueeStart = useRef<Point | null>(null);
     const [marqueeRect, setMarqueeRect] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
     const { socket, isConnected } = useSocket();
@@ -222,6 +230,20 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
             return next.length > MAX_HISTORY ? next.slice(next.length - MAX_HISTORY) : next;
         });
         setFuture([]); // A new edit invalidates redo history.
+    }
+
+    // Strictly-increasing numeric id for a new note (see lastNoteId above).
+    function nextNoteId(): number {
+        lastNoteId.current = Math.max(Date.now(), lastNoteId.current + 1);
+        return lastNoteId.current;
+    }
+
+    // A just-drawn shape whose bounding box is under the minimum in both
+    // dimensions (0x0 box, zero-length line, single-point pen) is an accidental
+    // click, not a real shape.
+    function isAccidentalDraw(shape: Shape): boolean {
+        const b = getBounds(shape);
+        return (b.maxX - b.minX) < DRAW_MIN_SIZE && (b.maxY - b.minY) < DRAW_MIN_SIZE;
     }
 
     // Derive stacking from current shared data instead of a per-browser counter.
@@ -277,9 +299,9 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
             id: crypto.randomUUID(),
             zIndex: zIndexBase + zIndexCounter++,
         }));
-        const newNotes: Note[] = clippedNotes.map((n, i) => ({
+        const newNotes: Note[] = clippedNotes.map((n) => ({
             ...(shiftItemByDelta(n, PASTE_OFFSET, PASTE_OFFSET) as Note),
-            id: Date.now() + i, // Keep ids unique inside a multi-item paste.
+            id: nextNoteId(), // Strictly-increasing, so copies never collide.
             zIndex: zIndexBase + zIndexCounter++,
         }));
         const newTexts: TextBox[] = clippedTexts.map((t) => ({
@@ -517,15 +539,86 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
         });
     }, [undo, redo, past.length, future.length, onHistoryChange]);
 
+    // Select every item on the board (Ctrl+A).
+    function selectAll() {
+        setSelectedIds(new Set<string | number>([
+            ...shapes.map((s) => s.id),
+            ...notes.map((n) => n.id),
+            ...texts.map((t) => t.id),
+        ]));
+    }
+
+    // Move the whole selection by a fixed delta (arrow-key nudge) as one
+    // broadcast + one undo step, mirroring the group-drag commit.
+    function nudgeSelection(dx: number, dy: number) {
+        if (selectedIds.size === 0) return;
+        const doMessages: CanvasMessage[] = [];
+        const undoMessages: CanvasMessage[] = [];
+
+        const movedShapes = shapes.map((s) => {
+            if (!selectedIds.has(s.id)) return s;
+            const moved = shiftItemByDelta(s, dx, dy) as Shape;
+            doMessages.push({ kind: "shape", action: "update", payload: moved });
+            undoMessages.push({ kind: "shape", action: "update", payload: s });
+            return moved;
+        });
+        const movedNotes = notes.map((n) => {
+            if (!selectedIds.has(n.id)) return n;
+            const moved = shiftItemByDelta(n, dx, dy) as Note;
+            doMessages.push({ kind: "note", action: "update", payload: moved });
+            undoMessages.push({ kind: "note", action: "update", payload: n });
+            return moved;
+        });
+        const movedTexts = texts.map((t) => {
+            if (!selectedIds.has(t.id)) return t;
+            const moved = shiftItemByDelta(t, dx, dy) as TextBox;
+            doMessages.push({ kind: "text", action: "update", payload: moved });
+            undoMessages.push({ kind: "text", action: "update", payload: t });
+            return moved;
+        });
+
+        if (doMessages.length === 0) return;
+        setShapes(movedShapes);
+        setNotes(movedNotes);
+        setTexts(movedTexts);
+        doMessages.forEach((m) => broadcast(m));
+        pushHistory(doMessages, undoMessages);
+    }
+
     useEffect(() => {
+        const NUDGE_KEYS = ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"];
         const handleKeyDown = (e: KeyboardEvent) => {
+            // Escape works even from inside a textarea: exit editing first,
+            // otherwise abort an in-progress draw, otherwise clear selection.
+            if (e.key === "Escape") {
+                if (isEditableTarget()) {
+                    (document.activeElement as HTMLElement | null)?.blur();
+                    return;
+                }
+                if (drawingId.current) {
+                    const id = drawingId.current;
+                    setShapes((prev) => prev.filter((s) => s.id !== id));
+                    drawingId.current = null;
+                    startPoint.current = null;
+                    setIsDrawing(false);
+                } else {
+                    setSelectedIds(new Set());
+                    setSelectedTriangleId(null);
+                    setEditingId(null);
+                }
+                return;
+            }
             if (isEditableTarget()) return; // Leave typing in inputs/textareas alone.
-            if (e.ctrlKey && e.key === "z") {
+            if (e.ctrlKey && e.key.toLowerCase() === "z" && !e.shiftKey) {
                 e.preventDefault();
                 undo();
-            } else if (e.ctrlKey && e.key === "y") {
+            } else if (e.ctrlKey && (e.key === "y" || (e.shiftKey && e.key.toLowerCase() === "z"))) {
+                // Ctrl+Y and the more common Ctrl+Shift+Z both redo.
                 e.preventDefault();
                 redo();
+            } else if (e.ctrlKey && e.key.toLowerCase() === "a") {
+                e.preventDefault();
+                selectAll();
             } else if (e.ctrlKey && e.key === "v") {
                 e.preventDefault();
                 pasteClipboard();
@@ -539,6 +632,14 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
             } else if (e.key === "Delete" || e.key === "Backspace") {
                 e.preventDefault();
                 deleteSelection();
+            } else if (NUDGE_KEYS.includes(e.key) && selectedIds.size > 0) {
+                // Arrow-key nudge: 1px, or 10px with Shift. Guarded on a
+                // selection so arrow keys still scroll when nothing is picked.
+                e.preventDefault();
+                const step = e.shiftKey ? 10 : 1;
+                const dx = e.key === "ArrowLeft" ? -step : e.key === "ArrowRight" ? step : 0;
+                const dy = e.key === "ArrowUp" ? -step : e.key === "ArrowDown" ? step : 0;
+                nudgeSelection(dx, dy);
             } else if (e.ctrlKey && e.shiftKey && e.code === "BracketRight") {
                 e.preventDefault();
                 bringSelectionToFront();
@@ -559,7 +660,25 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
         return () => {
             window.removeEventListener("keydown", handleKeyDown);
         };
-    }, [undo, redo, pasteClipboard, copySelection, duplicateSelection, deleteSelection, bringSelectionToFront, sendSelectionToBack, bringSelectionForward, sendSelectionBackward]);
+    }, [undo, redo, pasteClipboard, copySelection, duplicateSelection, deleteSelection, selectAll, nudgeSelection, bringSelectionToFront, sendSelectionToBack, bringSelectionForward, sendSelectionBackward]);
+
+    // Ctrl/Cmd + wheel zooms the canvas. Registered as a native, non-passive
+    // listener because React's onWheel is passive and cannot preventDefault the
+    // browser's own page zoom.
+    useEffect(() => {
+        const el = wrapperRef.current;
+        if (!el) return;
+        const onWheel = (e: WheelEvent) => {
+            if (!e.ctrlKey) return;
+            e.preventDefault();
+            const dir = e.deltaY < 0 ? 1 : -1;
+            setUserZoom((z) =>
+                Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, +(z + dir * ZOOM_STEP).toFixed(2)))
+            );
+        };
+        el.addEventListener("wheel", onWheel, { passive: false });
+        return () => el.removeEventListener("wheel", onWheel);
+    }, []);
 
     useEffect(() => {
         shapesRef.current = shapes;
@@ -832,7 +951,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
         if (selectedTool === "note") {
             const { x, y } = getCanvasPoint(e.clientX, e.clientY);
             const newNote: Note = {
-                id: Date.now(),
+                id: nextNoteId(),
                 text: "New note",
                 color: NOTE_COLOUR,
                 x,
@@ -1164,7 +1283,12 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
 
         if (moveId) {
             const shape = shapesRef.current.find((s) => s.id === moveId);
-            if (shape) {
+            if (shape && wasDrawing && isAccidentalDraw(shape)) {
+                // A click (or sub-pixel drag) with a draw tool made a zero-size
+                // shape. Drop it locally — never broadcast or push to history —
+                // so it doesn't litter the board and undo stack with invisibles.
+                setShapes((prev) => prev.filter((s) => s.id !== shape.id));
+            } else if (shape) {
                 const doMessage: CanvasMessage = {
                     kind: "shape",
                     action: wasDrawing ? "add" : "update",
@@ -1200,6 +1324,13 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
         triangleVertexDrag.current = null;
         penDrag.current = null;
         setIsDrawing(false);
+    }
+
+    // When our pointer leaves the canvas, finish any in-progress interaction and
+    // tell peers to drop our cursor so it doesn't stay frozen on their screens.
+    function handlePointerLeave() {
+        handlePointerUp();
+        socket?.emit("cursor-leave", { roomId });
     }
 
     // Plain click selects one item. Clicking inside a group keeps the group for
@@ -1855,7 +1986,7 @@ export default function CanvasEditor({ roomId, selectedTool, selectedColour, onH
                         onPointerDown={handlePointerDown}
                         onPointerMove={handlePointerMove}
                         onPointerUp={handlePointerUp}
-                        onPointerLeave={handlePointerUp}
+                        onPointerLeave={handlePointerLeave}
                         // Cancelled touch input should finish like pointer-up.
                         onPointerCancel={handlePointerUp}
                         className="relative origin-top-left"

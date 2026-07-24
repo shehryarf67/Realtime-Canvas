@@ -79,9 +79,18 @@ export default function Room() {
   }
 
   function handleCopyCode() {
-    navigator.clipboard.writeText(roomId);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    // Copy a clickable invite link, not just the bare code, so a teammate can
+    // open the board directly. Only flip to "Copied!" once it actually lands.
+    const inviteLink = `${window.location.origin}/room/${roomId}`;
+    navigator.clipboard
+      .writeText(inviteLink)
+      .then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      })
+      .catch(() => {
+        /* Clipboard blocked (e.g. insecure context); leave the label unchanged. */
+      });
   }
 
   function handleExport(format: "png" | "svg") {
@@ -192,10 +201,11 @@ export default function Room() {
 
         <button
           onClick={handleCopyCode}
+          aria-label="Copy invite link"
           className="flex items-center gap-2 text-sm font-mono text-neutral-600 hover:text-neutral-900 transition-colors cursor-pointer motion-reduce:transition-none"
         >
           <span>{roomId}</span>
-          <span className="text-xs text-neutral-400">{copied ? "Copied!" : "Copy"}</span>
+          <span aria-live="polite" className="text-xs text-neutral-400">{copied ? "Copied!" : "Copy link"}</span>
         </button>
       </div>
     </div>
@@ -208,6 +218,7 @@ export default function Room() {
         if (e.key === "Enter") e.currentTarget.blur();
       }}
       placeholder="Untitled Board"
+      aria-label="Board name"
       className="mb-3 w-fit max-w-md border border-transparent bg-transparent px-1 py-0.5 text-xl font-medium text-neutral-900 outline-none transition-colors hover:border-neutral-200 focus:border-neutral-300 focus:bg-neutral-50"
     />
 
